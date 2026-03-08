@@ -8,32 +8,71 @@ RelayController::RelayController() {
     _lamp2State = false;
     _lamp3State = false;
     _humidifierState = false;
+    _schedManager = nullptr;  // добавить эту строку
     
     loadDefaults();
 }
 
 void RelayController::loadDefaults() {
-    // Лампы по умолчанию
+
+
+    // ===== Лампа 1 =====
+    _lamp1Settings.index = 1;
     _lamp1Settings.mode = CH_MODE_SENSOR;
-    _lamp1Settings.type = CH_TYPE_LAMP;
+    _lamp1Settings.type = CH_TYPE_LAMP; 
+    _lamp1Settings.useSensor = true;
+    _lamp1Settings.useCyclic = false;
+    _lamp1Settings.useSchedule = false;
     _lamp1Settings.thresholdLow = LIGHT_THRESHOLD;
-    _lamp1Settings.thresholdHigh = LIGHT_THRESHOLD + 50; // гистерезис 50 люкс
+    _lamp1Settings.thresholdHigh = LIGHT_THRESHOLD + 50;
     _lamp1Settings.sensorHysteresis = 50;
+    _lamp1Settings.cycleEnabled = false;
     
-    _lamp2Settings = _lamp1Settings;
-    _lamp3Settings = _lamp1Settings;
+    // ===== Лампа 2 =====
+    _lamp1Settings.index = 2;
+    _lamp2Settings.mode = CH_MODE_SENSOR;
+    _lamp1Settings.type = CH_TYPE_LAMP; 
+    _lamp2Settings.useSensor = true;
+    _lamp2Settings.useCyclic = false;
+    _lamp2Settings.useSchedule = false;
+    _lamp2Settings.thresholdLow = LIGHT_THRESHOLD;
+    _lamp2Settings.thresholdHigh = LIGHT_THRESHOLD + 50;
+    _lamp2Settings.sensorHysteresis = 50;
+    _lamp2Settings.cycleEnabled = false;
     
-    // Увлажнитель по умолчанию
+    // ===== Лампа 3 =====
+    _lamp1Settings.index = 3;
+    _lamp3Settings.mode = CH_MODE_SENSOR;
+    _lamp1Settings.type = CH_TYPE_LAMP; 
+    _lamp3Settings.useSensor = true;
+    _lamp3Settings.useCyclic = false;
+    _lamp3Settings.useSchedule = false;
+    _lamp3Settings.thresholdLow = LIGHT_THRESHOLD;
+    _lamp3Settings.thresholdHigh = LIGHT_THRESHOLD + 50;
+    _lamp3Settings.sensorHysteresis = 50;
+    _lamp3Settings.cycleEnabled = false;
+    
+    // ===== Увлажнитель =====
+    _humidifierSettings.index = 4;
+    _humidifierSettings.type = CH_TYPE_HUMIDIFIER; 
     _humidifierSettings.mode = CH_MODE_SENSOR;
-    _humidifierSettings.type = CH_TYPE_HUMIDIFIER;
+    _humidifierSettings.useSensor = true;
+    // Устанавливаем useCyclic в соответствии с макросом из config.h
+    #ifdef HUMIDIFIER_MODE_CYCLIC
+        _humidifierSettings.useCyclic = HUMIDIFIER_MODE_CYCLIC;
+    #else
+        _humidifierSettings.useCyclic = false;
+    #endif
+    _humidifierSettings.useSchedule = false;
+    
     _humidifierSettings.thresholdLow = HUMIDITY_THRESHOLD;
-    _humidifierSettings.thresholdHigh = HUMIDITY_THRESHOLD + 10; // +10% гистерезис
+    _humidifierSettings.thresholdHigh = HUMIDITY_THRESHOLD + 10;
     _humidifierSettings.sensorHysteresis = 10;
     _humidifierSettings.cycleWorkTime = HUMIDIFIER_WORK_TIME;
     _humidifierSettings.cycleIdleTime = HUMIDIFIER_IDLE_TIME;
-    _humidifierSettings.cycleEnabled = false;
+    _humidifierSettings.cycleEnabled = _humidifierSettings.useCyclic; // для совместимости
     
-    // Глобальные настройки
+    // ===== Глобальные настройки =====
     _globalSettings.globalLightThreshold = LIGHT_THRESHOLD;
     _globalSettings.globalLightHysteresis = 50;
     _globalSettings.globalHumidityThreshold = HUMIDITY_THRESHOLD;
@@ -110,38 +149,59 @@ bool RelayController::checkCycle(ChannelSettings& settings) {
 }
 
 bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorValue, int hour, int min, int day, bool currentState) {
-    bool sensorResult = false;
-    bool scheduleResult = false;
-    bool cycleResult = false;
-    
-    // Проверка датчика
-    if (settings.mode == CH_MODE_SENSOR || settings.mode == CH_MODE_SENSOR_SCHEDULE) {
-        sensorResult = checkSensor(settings, sensorValue, currentState); // ← передаем состояние!
+    // Приоритет: если есть активные флаги (новый стиль)
+    if (settings.useSensor || settings.useCyclic || settings.useSchedule) {
+        bool result = true;
+        
+        // 1. Циклический режим (только при установленном флаге)
+        if (settings.useCyclic) {
+            result = result && checkCycle(settings);
+        }
+        
+        // 2. Датчик
+        if (settings.useSensor) {
+            result = result && checkSensor(settings, sensorValue, currentState);
+        }
+        
+        // 3. Расписание
+        if (settings.useSchedule && _schedManager != nullptr) {
+            bool scheduleOk = false;
+            if (settings.type == CH_TYPE_HUMIDIFIER) {
+                scheduleOk = _schedManager->isHumidifierScheduled(hour, min, day);
+            } else { // CH_TYPE_LAMP
+                scheduleOk = _schedManager->isLampScheduled(settings.index, hour, min, day);
+            }
+            result = result && scheduleOk;
+        }
+        
+        return result;
     }
     
-    // Проверка расписания
-    if (settings.mode == CH_MODE_SCHEDULE || settings.mode == CH_MODE_SENSOR_SCHEDULE) {
-        scheduleResult = checkSchedule(settings, hour, min, day);
-    }
-    
-    // Циклический режим (только для увлажнителя)
-    if (settings.cycleEnabled && settings.type == CH_TYPE_HUMIDIFIER) {
-        cycleResult = checkCycle(settings);
-    }
-    
+    // Старая логика на основе mode (для обратной совместимости)
     switch(settings.mode) {
         case CH_MODE_OFF:
             return false;
         case CH_MODE_ON:
             return true;
         case CH_MODE_SENSOR:
-            return sensorResult;
+            return checkSensor(settings, sensorValue, currentState);
         case CH_MODE_SCHEDULE:
-            return scheduleResult;
+            if (_schedManager == nullptr) return false;
+            if (settings.type == CH_TYPE_HUMIDIFIER) {
+                return _schedManager->isHumidifierScheduled(hour, min, day);
+            } else {
+                return _schedManager->isLampScheduled(settings.index, hour, min, day);
+            }
         case CH_MODE_SENSOR_SCHEDULE:
-            return sensorResult && scheduleResult;
+            if (_schedManager == nullptr) return false;
+            {
+                bool sensorPart = checkSensor(settings, sensorValue, currentState);
+                bool schedPart = (settings.type == CH_TYPE_HUMIDIFIER) ?
+                    _schedManager->isHumidifierScheduled(hour, min, day) :
+                    _schedManager->isLampScheduled(settings.index, hour, min, day);
+                return sensorPart && schedPart;
+            }
         case CH_MODE_GLOBAL:
-            // Использовать глобальные настройки
             if (settings.type == CH_TYPE_LAMP) {
                 return (sensorValue < _globalSettings.globalLightThreshold);
             } else {
@@ -151,7 +211,6 @@ bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorV
             return false;
     }
 }
-
 void RelayController::update(float light, float humidity, int hour, int min, int day) {
     // Расчет новых состояний для каждого канала с учетом текущего состояния
     bool newLamp1 = shouldChannelBeOn(_lamp1Settings, light, hour, min, day, _lamp1State);

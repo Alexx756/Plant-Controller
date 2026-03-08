@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "schedule.h"
 
 struct RelayState {
     bool lamp1;
@@ -25,6 +26,7 @@ private:
     ChannelSettings _humidifierSettings;
     
     GlobalSettings _globalSettings;
+    ScheduleManager* _schedManager;  // указатель на планировщик
     
     // Внутренние методы для расчета состояния
     bool shouldChannelBeOn(ChannelSettings& settings, float sensorValue, int hour, int min, int day, bool currentState);
@@ -53,6 +55,7 @@ public:
     bool getLamp3() { return _lamp3State; }
     bool getHumidifier() { return _humidifierState; }
     RelayState getAllStates();
+    void setScheduleManager(ScheduleManager* sched) { _schedManager = sched; }
     
     // Доступ к настройкам для меню
     ChannelSettings* getLamp1Settings() { return &_lamp1Settings; }

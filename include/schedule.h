@@ -51,6 +51,7 @@ public:
     bool isLampScheduled(int lamp, int hour, int min, int day);
     
     // Настройка увлажнителя
+    bool isHumidifierScheduled(int hour, int min, int day);  // <-- добавить
     void setHumidifierThreshold(int threshold);
     void setHumidifierCyclic(int workSec, int idleSec);
     void setHumidifierSchedule(int startH, int startM, int endH, int endM, int* days, int daysCount);

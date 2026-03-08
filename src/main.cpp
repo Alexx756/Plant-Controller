@@ -120,6 +120,8 @@ void setup() {
     
     // Инициализация расписания
     scheduler.begin();
+
+    relays.setScheduleManager(&scheduler);
     
     // Статистика
     initStats();

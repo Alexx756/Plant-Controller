@@ -147,3 +147,7 @@ bool ScheduleManager::shouldHumidifierRun(float currentHumidity) {
             return false;
     }
 }
+bool ScheduleManager::isHumidifierScheduled(int hour, int min, int day) {
+    // Пока просто заглушка, позже реализуем полноценно
+    return false;
+}

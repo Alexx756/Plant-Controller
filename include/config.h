@@ -68,8 +68,13 @@ enum ChannelType {
 // ============ НАСТРОЙКИ КАНАЛА ============
 struct ChannelSettings {
     // Общие настройки
+    int index;  // 1-лампа1, 2-лампа2, 3-лампа3, 4-увлажнитель
+    ChannelType type; 
+    bool useSensor;      // использовать датчик
+    bool useCyclic;      // использовать циклический режим
+    bool useSchedule;    // использовать расписание
+
     ChannelMode mode;
-    ChannelType type;
     bool enabled;
     
     // Настройки датчика
