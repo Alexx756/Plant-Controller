@@ -1,0 +1,6 @@
+.pio
+.clangd
+.vscode
+node_modules
+*.pyc
+.DS_Store
