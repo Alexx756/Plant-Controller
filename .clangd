@@ -1,0 +1,45 @@
+CompileFlags:
+  CompilationDatabase: .
+  Add: [
+    "-nostdinc",           # Отключает /usr/include (хостовые заголовки Docker)
+    "-nobuiltininc",       # Отключает встроенные инклуды самого clang
+
+    # 1. Заголовки C++ (STL) для версии 12.2.0
+    "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include/c++/12.2.0",
+    "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include/c++/12.2.0/xtensa-esp32s3-elf",
+    "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include/c++/12.2.0/backward",
+
+    # 2. Внутренние ресурсы clang 18 (для stdbool.h)
+    "-isystem/usr/lib/llvm-18/lib/clang/18/include",
+    
+    # 3. Системные инклуды тулчейна (пути к gcc 12.2.0)
+    "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include",
+    "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/lib/gcc/xtensa-esp32s3-elf/12.2.0/include",
+   
+    # 4. Исправляем конфликт ssize_t
+    "-D__ssize_t_defined",
+    "-D_SSIZE_T_DECLARED",
+    "-Dssize_t=long", 
+    
+    # 5. Дополнительные заглушки для совместимости с GCC 12
+    "-D__GNUC__=12",
+    "-D__GNUC_MINOR__=2",
+    "-D__GNUC_PATCHLEVEL__=0",
+    "-D__const__=const",
+    "-D__restrict__=restrict",
+    
+    "-Wno-all",
+    "-Wno-implicit-int-float-conversion"
+  ]
+  Remove: [
+    "-target",
+    "-m*",
+    "-fstrict-volatile-bitfields",
+    "-fno-tree-switch-conversion",
+    "-mlongcalls"
+  ]
+Diagnostics:
+  Suppress: [
+    "typedef_redefinition", 
+    "pp_expr_bad_token_binop"
+  ]

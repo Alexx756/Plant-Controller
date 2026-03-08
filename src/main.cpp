@@ -6,9 +6,10 @@
 #include "relay.h"
 #include "menu.h"
 #include "time_manager.h"
-#include "logger.h"
+#include "logger.h"  
 #include "schedule.h"
 
+// ============ ГЛОБАЛЬНЫЕ ОБЪЕКТЫ ============
 Display display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
 Sensors sensors(ONE_WIRE_BUS);
 RelayController relays;
@@ -16,15 +17,20 @@ Menu menu;
 TimeManager timeManager;
 ScheduleManager scheduler;
 
+// ============ ПЕРЕМЕННЫЕ ============
 SensorData sensorData;
 Statistics stats;
 unsigned long lastReadTime = 0;
 unsigned long lastStatsUpdate = 0;
 
+// ============ ИНИЦИАЛИЗАЦИЯ СТАТИСТИКИ ============
 void initStats() {
-    stats.minTemp = 100.0; stats.maxTemp = -100.0;
-    stats.minHum = 100.0; stats.maxHum = 0.0;
-    stats.minLight = 10000.0; stats.maxLight = 0.0;
+    stats.minTemp = 100.0;
+    stats.maxTemp = -100.0;
+    stats.minHum = 100.0;
+    stats.maxHum = 0.0;
+    stats.minLight = 10000.0;
+    stats.maxLight = 0.0;
     stats.uptime = 0;
 }
 
@@ -41,83 +47,182 @@ void updateStats(float temp, float hum, float light) {
     }
 }
 
+// ============ SETUP ============
 void setup() {
-    Serial.begin(115200); delay(2000);
+    Serial.begin(115200);
+    delay(2000);
+    
+    // Инициализация логгера
     logger.begin();
-    logger.log("СИСТЕМА", "Запуск контроллера");
-
+    
+    logger.log("СИСТЕМА", "Запуск Умного контроллера растений");
+    
+    // I2C
     Wire.begin(I2C_SDA, I2C_SCL);
-
-    display.begin();
-    sensors.begin();
+    logger.logf("I2C", "SDA=%d, SCL=%d", I2C_SDA, I2C_SCL);
+    
+    // Сканер I2C
+    logger.log("I2C", "Сканирование шины...");
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            if (addr == 0x38) logger.log("I2C", "✅ AHT20 найден");
+            else if (addr == 0x3C) logger.log("I2C", "✅ OLED найден");
+            else if (addr == 0x23) logger.log("I2C", "✅ BH1750 найден");
+            else logger.logf("I2C", "✅ Устройство 0x%02X", addr);
+        }
+    }
+    
+    // Дисплей
+    if (display.begin()) {
+        logger.log("ДИСПЛЕЙ", "✅ Инициализирован");
+    } else {
+        logger.log("ДИСПЛЕЙ", "❌ Ошибка");
+    }
+    
+    // Датчики
+    if (sensors.begin()) {
+        logger.log("ДАТЧИКИ", "✅ Инициализированы");
+    } else {
+        logger.log("ДАТЧИКИ", "⚠️ Частичная инициализация");
+    }
+    
+    // Реле
     relays.begin();
+    logger.log("РЕЛЕ", "✅ Инициализированы");
+    
+    // Энкодер и меню
     menu.begin();
-    menu.setRelays(&relays);
     menu.setScheduler(&scheduler);
-
+    logger.log("МЕНЮ", "✅ Инициализировано");
+    
+    // Подключаемся к Wi-Fi
+    logger.log("Wi-Fi", "Подключение...");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    
     int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) { delay(500); attempts++; }
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        attempts++;
+    }
+    
     if (WiFi.status() == WL_CONNECTED) {
         logger.logf("Wi-Fi", "✅ Подключен, IP: %s", WiFi.localIP().toString().c_str());
         timeManager.begin();
+    } else {
+        logger.log("Wi-Fi", "❌ Не удалось подключиться");
     }
-
+    
+    // Прерывания для энкодера
     attachInterrupt(digitalPinToInterrupt(ENCODER_DT), Menu::readEncoderISR, CHANGE);
     attachInterrupt(digitalPinToInterrupt(ENCODER_CLK), Menu::readEncoderISR, CHANGE);
-
+    logger.log("ЭНКОДЕР", "✅ Прерывания настроены");
+    
+    // Инициализация расписания
     scheduler.begin();
-    scheduler.setHumidifierCyclic(HUMIDIFIER_WORK_TIME, HUMIDIFIER_IDLE_TIME);
-
+    
+    // Статистика
     initStats();
     logger.log("СИСТЕМА", "✅ Запуск завершен");
+    
     delay(2000);
 }
 
+// ============ LOOP ============
 void loop() {
     unsigned long now = millis();
+    
+    // Обновляем время
     timeManager.update();
-
+    
+    // Чтение датчиков
     if (now - lastReadTime > READ_INTERVAL) {
         sensorData = sensors.read();
-
+        
+        // Логирование датчиков (по таймеру из логгера)
         if (logger.shouldLog()) {
-            if (timeManager.isTimeSynced())
+            // Время
+            if (timeManager.isTimeSynced()) {
                 logger.logTime(timeManager.getHour(), timeManager.getMinute(), timeManager.getSecond());
-            if (sensorData.ahtValid)
-                logger.logSensors(sensorData.ahtTemp, sensorData.ahtHum, sensorData.dsTemp, sensorData.lightLevel);
-            RelayState r = relays.getAllStates();
-            logger.logRelay(r.lamp1, r.lamp2, r.lamp3, r.humidifier, menu.getControlMode());
+            }
+            
+            // Датчики
+            if (sensorData.ahtValid) {
+                logger.logSensors(
+                    sensorData.ahtTemp,
+                    sensorData.ahtHum,
+                    sensorData.dsTemp,
+                    sensorData.lightLevel
+                );
+            }
+            
+            // Реле
+            RelayState rState = relays.getAllStates();
+            logger.logRelay(
+                rState.lamp1, rState.lamp2, rState.lamp3, rState.humidifier,
+                menu.getControlMode()
+            );
         }
-
-        if (menu.getControlMode() == MODE_AUTO && timeManager.isTimeSynced()) {
-            relays.update(sensorData.lightLevel, sensorData.ahtHum,
-                          timeManager.getHour(), timeManager.getMinute(), timeManager.getDayOfWeek());
+        
+        // ===== АВТОМАТИЧЕСКОЕ УПРАВЛЕНИЕ (AUTO режим) =====
+        if (menu.getControlMode() == MODE_AUTO) {
+            // Обновляем состояние всех каналов через новый RelayController
+            relays.update(
+                sensorData.lightLevel,
+                sensorData.ahtHum,
+                timeManager.getHour(),
+                timeManager.getMinute(),
+                timeManager.getDayOfWeek()
+            );
         }
-
+        
+        // Принудительное обновление при входе в AUTO режим (если нужно)
         if (menu.forceAutoUpdate()) {
-            relays.update(sensorData.lightLevel, sensorData.ahtHum,
-                          timeManager.getHour(), timeManager.getMinute(), timeManager.getDayOfWeek());
+            relays.update(
+                sensorData.lightLevel,
+                sensorData.ahtHum,
+                timeManager.getHour(),
+                timeManager.getMinute(),
+                timeManager.getDayOfWeek()
+            );
             menu.clearForceAutoUpdate();
         }
-
+        
         lastReadTime = now;
     }
-
+    
+    // Обработка запросов на переключение реле из меню
     if (menu.isToggleRequested()) {
-        relays.manualToggle(menu.getToggleIndex());
+        int idx = menu.getToggleIndex();
+        relays.manualToggle(idx);
         menu.clearToggleRequest();
     }
-
-    if (Serial.available()) relays.handleSerialCommand(Serial.read());
-
+    
+    // Обработка команд из Serial
+    if (Serial.available()) {
+        char cmd = Serial.read();
+        relays.handleSerialCommand(cmd);
+    }
+    
+    // Обновление статистики (раз в минуту)
     if (now - lastStatsUpdate > 60000) {
         stats.uptime = millis() / 1000;
-        if (sensorData.ahtValid) updateStats(sensorData.ahtTemp, sensorData.ahtHum, sensorData.lightLevel);
+        if (sensorData.ahtValid) {
+            updateStats(sensorData.ahtTemp, sensorData.ahtHum, sensorData.lightLevel);
+        }
         lastStatsUpdate = now;
     }
-
+    
+    // Обновление меню и дисплея
     RelayState rState = relays.getAllStates();
-    menu.update(sensorData.ahtTemp, sensorData.ahtHum, sensorData.dsTemp, sensorData.lightLevel, rState, stats);
+    menu.update(
+        sensorData.ahtTemp,
+        sensorData.ahtHum,
+        sensorData.dsTemp,
+        sensorData.lightLevel,
+        rState,
+        stats
+    );
+    
     delay(10);
 }

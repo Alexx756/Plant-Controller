@@ -10,6 +10,7 @@ private:
     Adafruit_SSD1306* _display;
     U8G2_FOR_ADAFRUIT_GFX _u8g2font;
     bool _initialized;
+    
 public:
     Display(int width, int height, TwoWire* wire);
     bool begin();
@@ -18,6 +19,8 @@ public:
     void printSensorData(const char* name, float value, const char* unit, int line);
     void printStatus(const char* text, int line);
     void update();
+    
+    // Публичные методы для доступа к U8g2 (для меню)
     U8G2_FOR_ADAFRUIT_GFX* getU8g2() { return &_u8g2font; }
     Adafruit_SSD1306* getDisplay() { return _display; }
 };
