@@ -24,6 +24,9 @@ public:
     void logEncoder(int delta, int position);
     void logMenu(const char* action, int screen);
     void logTime(int hour, int minute, int second);
+    
+    // Отладочные сообщения
+    void logDebug(const char* format, ...);
 };
 
 extern Logger logger;  // глобальный объект

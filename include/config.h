@@ -133,10 +133,11 @@ struct GlobalSettings {
 #define LOG_SENSORS true           // датчики (температура, влажность, свет)
 #define LOG_RELAY true             // состояние реле
 #define LOG_ENCODER false          // энкодер (отладка вращения)
-#define LOG_MENU false              // переходы по меню
-#define LOG_AUTO true               // автоматика (включение/выключение)
-#define LOG_TIME true               // время (если есть NTP/RTC)
+#define LOG_MENU false             // переходы по меню
+#define LOG_AUTO true              // автоматика (включение/выключение)
+#define LOG_TIME true              // время (если есть NTP/RTC)
 #define LOG_SCHEDULE true
+#define LOG_DEBUG true             // отладочные сообщения (разное)
 
 
 // Формат вывода

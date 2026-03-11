@@ -8,14 +8,12 @@ RelayController::RelayController() {
     _lamp2State = false;
     _lamp3State = false;
     _humidifierState = false;
-    _schedManager = nullptr;  // добавить эту строку
+    _schedManager = nullptr;
     
     loadDefaults();
 }
 
 void RelayController::loadDefaults() {
-
-
     // ===== Лампа 1 =====
     _lamp1Settings.index = 1;
     _lamp1Settings.mode = CH_MODE_SENSOR;
@@ -29,9 +27,9 @@ void RelayController::loadDefaults() {
     _lamp1Settings.cycleEnabled = false;
     
     // ===== Лампа 2 =====
-    _lamp1Settings.index = 2;
+    _lamp2Settings.index = 2;
     _lamp2Settings.mode = CH_MODE_SENSOR;
-    _lamp1Settings.type = CH_TYPE_LAMP; 
+    _lamp2Settings.type = CH_TYPE_LAMP; 
     _lamp2Settings.useSensor = true;
     _lamp2Settings.useCyclic = false;
     _lamp2Settings.useSchedule = false;
@@ -41,9 +39,9 @@ void RelayController::loadDefaults() {
     _lamp2Settings.cycleEnabled = false;
     
     // ===== Лампа 3 =====
-    _lamp1Settings.index = 3;
+    _lamp3Settings.index = 3;
     _lamp3Settings.mode = CH_MODE_SENSOR;
-    _lamp1Settings.type = CH_TYPE_LAMP; 
+    _lamp3Settings.type = CH_TYPE_LAMP; 
     _lamp3Settings.useSensor = true;
     _lamp3Settings.useCyclic = false;
     _lamp3Settings.useSchedule = false;
@@ -57,15 +55,11 @@ void RelayController::loadDefaults() {
     _humidifierSettings.type = CH_TYPE_HUMIDIFIER; 
     _humidifierSettings.mode = CH_MODE_SENSOR;
     _humidifierSettings.useSensor = true;
-    // Устанавливаем useCyclic в соответствии с макросом из config.h
     #ifdef HUMIDIFIER_MODE_CYCLIC
         _humidifierSettings.useCyclic = HUMIDIFIER_MODE_CYCLIC;
     #else
         _humidifierSettings.useCyclic = false;
     #endif
-    
-    // useSensor противоположен useCyclic по умолчанию (взаимоисключающие)
-    _humidifierSettings.useSensor = !_humidifierSettings.useCyclic;
     _humidifierSettings.useSchedule = false;
     
     _humidifierSettings.thresholdLow = HUMIDITY_THRESHOLD;
@@ -73,7 +67,7 @@ void RelayController::loadDefaults() {
     _humidifierSettings.sensorHysteresis = 10;
     _humidifierSettings.cycleWorkTime = HUMIDIFIER_WORK_TIME;
     _humidifierSettings.cycleIdleTime = HUMIDIFIER_IDLE_TIME;
-    _humidifierSettings.cycleEnabled = _humidifierSettings.useCyclic; // для совместимости
+    _humidifierSettings.cycleEnabled = _humidifierSettings.useCyclic;
     
     // ===== Глобальные настройки =====
     _globalSettings.globalLightThreshold = LIGHT_THRESHOLD;
@@ -97,16 +91,12 @@ void RelayController::begin() {
 
 bool RelayController::checkSensor(ChannelSettings& settings, float sensorValue, bool currentState) {
     if (settings.type == CH_TYPE_LAMP) {
-        // Для ламп: включаем ниже порога, выключаем выше порога+гистерезис
         if (currentState) {
-            // Если лампа включена - выключаем только если свет выше порога+гистерезис
             return (sensorValue < settings.thresholdLow + settings.sensorHysteresis);
         } else {
-            // Если лампа выключена - включаем если свет ниже порога
             return (sensorValue < settings.thresholdLow);
         }
     } else {
-        // Для увлажнителя: включаем ниже порога, выключаем выше порога+гистерезис
         if (currentState) {
             return (sensorValue < settings.thresholdLow + settings.sensorHysteresis);
         } else {
@@ -116,9 +106,8 @@ bool RelayController::checkSensor(ChannelSettings& settings, float sensorValue, 
 }
 
 bool RelayController::checkSchedule(ChannelSettings& settings, int hour, int min, int day) {
-    // Проверка дня недели (индекс 0 = понедельник)
     if (day >= 0 && day < 7 && settings.scheduleDays[day] == false) {
-        return false; // сегодня не разрешен
+        return false;
     }
     
     int currentMinutes = hour * 60 + min;
@@ -136,13 +125,11 @@ bool RelayController::checkCycle(ChannelSettings& settings) {
     unsigned long now = millis();
     
     if (settings.cycleLastState) {
-        // Сейчас работает - проверяем, не пора ли выключить
         if (now - settings.cycleLastSwitch > settings.cycleWorkTime * 1000) {
             settings.cycleLastState = false;
             settings.cycleLastSwitch = now;
         }
     } else {
-        // Сейчас отдыхает - проверяем, не пора ли включить
         if (now - settings.cycleLastSwitch > settings.cycleIdleTime * 1000) {
             settings.cycleLastState = true;
             settings.cycleLastSwitch = now;
@@ -152,26 +139,22 @@ bool RelayController::checkCycle(ChannelSettings& settings) {
 }
 
 bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorValue, int hour, int min, int day, bool currentState) {
-    // Приоритет: если есть активные флаги (новый стиль)
     if (settings.useSensor || settings.useCyclic || settings.useSchedule) {
         bool result = true;
         
-        // 1. Циклический режим (только при установленном флаге)
         if (settings.useCyclic) {
             result = result && checkCycle(settings);
         }
         
-        // 2. Датчик
         if (settings.useSensor) {
             result = result && checkSensor(settings, sensorValue, currentState);
         }
         
-        // 3. Расписание
         if (settings.useSchedule && _schedManager != nullptr) {
             bool scheduleOk = false;
             if (settings.type == CH_TYPE_HUMIDIFIER) {
                 scheduleOk = _schedManager->isHumidifierScheduled(hour, min, day);
-            } else { // CH_TYPE_LAMP
+            } else {
                 scheduleOk = _schedManager->isLampScheduled(settings.index, hour, min, day);
             }
             result = result && scheduleOk;
@@ -180,7 +163,6 @@ bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorV
         return result;
     }
     
-    // Старая логика на основе mode (для обратной совместимости)
     switch(settings.mode) {
         case CH_MODE_OFF:
             return false;
@@ -214,25 +196,24 @@ bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorV
             return false;
     }
 }
+
 void RelayController::update(float light, float humidity, int hour, int min, int day) {
-    Serial.printf("[DEBUG] update: useSensor=%d, useCyclic=%d, useSchedule=%d\n",
+    logger.logDebug("update: useSensor=%d, useCyclic=%d, useSchedule=%d",
                   _humidifierSettings.useSensor,
                   _humidifierSettings.useCyclic,
                   _humidifierSettings.useSchedule);
-    // Расчет новых состояний для каждого канала с учетом текущего состояния
+    
     bool newLamp1 = shouldChannelBeOn(_lamp1Settings, light, hour, min, day, _lamp1State);
     bool newLamp2 = shouldChannelBeOn(_lamp2Settings, light, hour, min, day, _lamp2State);
     bool newLamp3 = shouldChannelBeOn(_lamp3Settings, light, hour, min, day, _lamp3State);
     bool newHumidifier = shouldChannelBeOn(_humidifierSettings, humidity, hour, min, day, _humidifierState);
     
-    // Применяем изменения
     if (newLamp1 != _lamp1State) setLamp1(newLamp1);
     if (newLamp2 != _lamp2State) setLamp2(newLamp2);
     if (newLamp3 != _lamp3State) setLamp3(newLamp3);
     if (newHumidifier != _humidifierState) setHumidifier(newHumidifier);
 }
 
-// Остальные методы без изменений (setLamp1, setLamp2, setAllLamps, manualToggle, handleSerialCommand)
 void RelayController::setLamp1(bool state) {
     digitalWrite(RELAY_LAMP1, state ? HIGH : LOW);
     _lamp1State = state;
@@ -266,14 +247,14 @@ void RelayController::setHumidifier(bool state) {
 
 void RelayController::setHumidifierUseSensor(bool enable) {
     _humidifierSettings.useSensor = enable;
-    Serial.printf("[DEBUG] setHumidifierUseSensor(%d)\n", enable); // Временная отладка
+    logger.logDebug("setHumidifierUseSensor(%d)", enable);
     logger.logf("РЕЛЕ", "useSensor = %d", enable);
 }
 
 void RelayController::setHumidifierUseCyclic(bool enable) {
     _humidifierSettings.useCyclic = enable;
     _humidifierSettings.cycleEnabled = enable;
-    Serial.printf("[DEBUG] setHumidifierUseCyclic(%d)\n", enable); // Временная отладка
+    logger.logDebug("setHumidifierUseCyclic(%d)", enable);
     logger.logf("РЕЛЕ", "useCyclic = %d", enable);
 }
 
@@ -281,13 +262,13 @@ void RelayController::setHumidifierThreshold(int low, int high, int hysteresis) 
     _humidifierSettings.thresholdLow = low;
     _humidifierSettings.thresholdHigh = high;
     _humidifierSettings.sensorHysteresis = hysteresis;
-    Serial.printf("[DEBUG] setHumidifierThreshold low=%d high=%d hyst=%d\n", low, high, hysteresis);
+    logger.logDebug("setHumidifierThreshold low=%d high=%d hyst=%d", low, high, hysteresis);
 }
 
 void RelayController::setHumidifierCycleTimes(int work, int idle) {
     _humidifierSettings.cycleWorkTime = work;
     _humidifierSettings.cycleIdleTime = idle;
-    Serial.printf("[DEBUG] setHumidifierCycleTimes work=%d idle=%d\n", work, idle);
+    logger.logDebug("setHumidifierCycleTimes work=%d idle=%d", work, idle);
 }
 
 RelayState RelayController::getAllStates() {

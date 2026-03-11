@@ -93,4 +93,19 @@ void Logger::logTime(int hour, int minute, int second) {
     logf("ВРЕМЯ", "%02d:%02d:%02d", hour, minute, second);
 }
 
+void Logger::logDebug(const char* format, ...) {
+    if (!LOG_ENABLED || !LOG_DEBUG) return;
+    
+    Serial.print("[DEBUG] ");
+    
+    va_list args;
+    va_start(args, format);
+    char buffer[128];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    Serial.print(buffer);
+    va_end(args);
+    
+    Serial.println();
+}
+
 Logger logger;  // глобальный экземпляр
