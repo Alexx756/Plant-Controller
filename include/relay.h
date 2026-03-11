@@ -57,11 +57,18 @@ public:
     RelayState getAllStates();
     void setScheduleManager(ScheduleManager* sched) { _schedManager = sched; }
     
+    //Настройки Увлажнителя
+
+    void setHumidifierUseSensor(bool enable);
+    void setHumidifierUseCyclic(bool enable);
+    void setHumidifierThreshold(int low, int high, int hysteresis);
+    void setHumidifierCycleTimes(int work, int idle);
+    ChannelSettings* getHumidifierSettings() { return &_humidifierSettings; }
+
     // Доступ к настройкам для меню
     ChannelSettings* getLamp1Settings() { return &_lamp1Settings; }
     ChannelSettings* getLamp2Settings() { return &_lamp2Settings; }
     ChannelSettings* getLamp3Settings() { return &_lamp3Settings; }
-    ChannelSettings* getHumidifierSettings() { return &_humidifierSettings; }
     GlobalSettings* getGlobalSettings() { return &_globalSettings; }
 };
 

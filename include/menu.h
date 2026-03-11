@@ -19,6 +19,7 @@ enum ScreenType {
     SCREEN_HUMIDIFIER_SETTINGS,        // выбор режима увлажнителя
     SCREEN_HUMIDIFIER_THRESHOLD,       // настройка порога
     SCREEN_HUMIDIFIER_CYCLIC,          // настройка циклов
+    SCREEN_HUMIDIFIER_SCHEDULE,         //настройка расписания
     SCREEN_LAMP_SETTINGS,               // настройки ламп (общее меню)
     SCREEN_LAMP1_SETTINGS,              // настройки лампы 1
     SCREEN_LAMP2_SETTINGS,              // настройки лампы 2
@@ -51,79 +52,96 @@ struct Statistics {
 
 class Menu {
 private:
-    ScreenType _currentScreen;
-    ScreenType _prevScreen;
-    int _menuPosition;
-    
-    // ===== ЭНКОДЕР =====
-    AiEsp32RotaryEncoder* _encoder;
-    volatile long _encoderValue;
-    bool _encoderPressed;
-    unsigned long _pressStartTime;
-    bool _longPressTriggered;
-    
-    // Режимы и настройки
-    ControlMode _controlMode;
-    Thresholds _thresholds;
-    Thresholds _editThresholds;
-    ScheduleManager* _scheduler;
-    int _editingValue;
-    bool _forceAutoUpdate;                // Флаг принудительного обновления AUTO
-    
-    // Флаги для переключения реле
-    bool _manualToggleRequested;
-    int _manualToggleIndex;
+    // ===== ТЕКУЩИЙ ЭКРАН И НАВИГАЦИЯ =====
+    ScreenType _currentScreen;      // текущий отображаемый экран
+    ScreenType _prevScreen;          // предыдущий экран (для возврата)
+    int _menuPosition;               // позиция курсора на текущем экране
 
-    // Для настройки увлажнителя
-    int _editHumidifierMode;
-    int _editHumidifierValue;
-    
-    // Внутренние методы
-    void handleEncoderRotation(int delta);
-    void handleShortPress();
-    void handleLongPress();
-    
-    // Отрисовка экранов
+    // ===== ЭНКОДЕР =====
+    AiEsp32RotaryEncoder* _encoder;  // объект энкодера
+    volatile long _encoderValue;      // последнее считанное значение (для ISR)
+    bool _encoderPressed;             // флаг нажатия кнопки энкодера
+    unsigned long _pressStartTime;    // время начала нажатия (для определения длительности)
+    bool _longPressTriggered;          // флаг, что долгое нажатие уже обработано
+
+    // ===== РЕЖИМЫ И НАСТРОЙКИ =====
+    ControlMode _controlMode;          // AUTO или MANUAL
+    Thresholds _thresholds;            // текущие пороги (свет, влажность, температура)
+    Thresholds _editThresholds;        // редактируемые пороги (для экрана настроек)
+    ScheduleManager* _scheduler;       // указатель на планировщик расписаний
+    int _editingValue;                 // вспомогательная переменная для редактирования (используется в разных экранах)
+    bool _forceAutoUpdate;              // флаг принудительного обновления AUTO режима
+
+    // ===== РУЧНОЕ УПРАВЛЕНИЕ РЕЛЕ =====
+    bool _manualToggleRequested;        // запрос на переключение реле из меню
+    int _manualToggleIndex;             // индекс реле для переключения (0-3)
+
+    // ===== НАСТРОЙКИ УВЛАЖНИТЕЛЯ =====
+    int _editHumidifierMode;            // выбранный режим увлажнителя (0-2)
+    int _editHumidifierValue;           // первое редактируемое значение (нижний порог / время работы)
+    int _editHumidifierValue2;           // второе редактируемое значение (гистерезис / время отдыха)
+    bool _editHumidifierSensorEnabled;   // для экрана порога (useSensor)
+    bool _editHumidifierCyclicEnabled;   // для экрана цикла (useCyclic)
+
+    // ===== РЕДАКТИРОВАНИЕ ВРЕМЕНИ =====
+    int _editHour, _editMinute;          // часы и минуты для редактирования времени
+    bool _editIsHour;                     // флаг: сейчас редактируем часы (true) или минуты (false)
+
+    // ===== УКАЗАТЕЛИ НА ДРУГИЕ МОДУЛИ =====
+    RelayController* _relay;             // указатель на контроллер реле
+
+    // ===== НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ РЕЖИМА РЕДАКТИРОВАНИЯ =====
+    bool _editingActive;                 // флаг: находимся в режиме редактирования значения
+    int _editingIndex;                    // индекс редактируемого поля (1 или 2 на экране датчика)
+
+    // ===== ВНУТРЕННИЕ МЕТОДЫ =====
+    void handleEncoderRotation(int delta);   // обработка вращения энкодера
+    void handleShortPress();                 // обработка короткого нажатия
+    void handleLongPress();                  // обработка долгого нажатия
+
+    // ===== ОТРИСОВКА ЭКРАНОВ =====
     void drawMainScreen(float temp, float hum, float dsTemp, float light, RelayState relayState);
     void drawModeSelectScreen();
     void drawManualScreen(RelayState relayState);
     void drawHumidifierSettingsScreen();
     void drawHumidifierThresholdScreen();
     void drawHumidifierCyclicScreen();
+    void drawHumidifierScheduleScreen(); 
     void drawLampSettingsScreen();
     void drawLampDetailScreen(int lampNumber);
     void drawSettingsScreen();
     void drawThresholdsScreen();
     void drawStatsScreen(Statistics stats);
     void drawConfirmScreen(const char* message);
-    
+
 public:
     Menu();
     void begin();
     void update(float temp, float hum, float dsTemp, float light, RelayState relayState, Statistics stats);
-    
+
     // Для отладки
     void testEncoder();
-    
+
     // IRAM_ATTR для обработки прерывания
     static void IRAM_ATTR readEncoderISR();
-    
+
     // Геттеры
     ScreenType getCurrentScreen() { return _currentScreen; }
     ControlMode getControlMode() { return _controlMode; }
     Thresholds getThresholds() { return _thresholds; }
-    
+
     bool isToggleRequested() { return _manualToggleRequested; }
     int getToggleIndex() { return _manualToggleIndex; }
     void clearToggleRequest() { _manualToggleRequested = false; }
-    
+
     bool forceAutoUpdate() { return _forceAutoUpdate; }
     void clearForceAutoUpdate() { _forceAutoUpdate = false; }
-    
+
     // Сеттеры
     void setScheduler(ScheduleManager* sched) { _scheduler = sched; }
     void setControlMode(ControlMode mode) { _controlMode = mode; }
     void setThresholds(Thresholds th) { _thresholds = th; }
+    void setRelayController(RelayController* relay) { _relay = relay; }
 };
 
 #endif

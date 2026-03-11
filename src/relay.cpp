@@ -63,6 +63,9 @@ void RelayController::loadDefaults() {
     #else
         _humidifierSettings.useCyclic = false;
     #endif
+    
+    // useSensor противоположен useCyclic по умолчанию (взаимоисключающие)
+    _humidifierSettings.useSensor = !_humidifierSettings.useCyclic;
     _humidifierSettings.useSchedule = false;
     
     _humidifierSettings.thresholdLow = HUMIDITY_THRESHOLD;
@@ -212,6 +215,10 @@ bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorV
     }
 }
 void RelayController::update(float light, float humidity, int hour, int min, int day) {
+    Serial.printf("[DEBUG] update: useSensor=%d, useCyclic=%d, useSchedule=%d\n",
+                  _humidifierSettings.useSensor,
+                  _humidifierSettings.useCyclic,
+                  _humidifierSettings.useSchedule);
     // Расчет новых состояний для каждого канала с учетом текущего состояния
     bool newLamp1 = shouldChannelBeOn(_lamp1Settings, light, hour, min, day, _lamp1State);
     bool newLamp2 = shouldChannelBeOn(_lamp2Settings, light, hour, min, day, _lamp2State);
@@ -255,6 +262,32 @@ void RelayController::setHumidifier(bool state) {
     digitalWrite(RELAY_HUMIDIFIER, state ? HIGH : LOW);
     _humidifierState = state;
     logger.logf("РЕЛЕ", "Увлажнитель: %s", state ? "ON" : "OFF");
+}
+
+void RelayController::setHumidifierUseSensor(bool enable) {
+    _humidifierSettings.useSensor = enable;
+    Serial.printf("[DEBUG] setHumidifierUseSensor(%d)\n", enable); // Временная отладка
+    logger.logf("РЕЛЕ", "useSensor = %d", enable);
+}
+
+void RelayController::setHumidifierUseCyclic(bool enable) {
+    _humidifierSettings.useCyclic = enable;
+    _humidifierSettings.cycleEnabled = enable;
+    Serial.printf("[DEBUG] setHumidifierUseCyclic(%d)\n", enable); // Временная отладка
+    logger.logf("РЕЛЕ", "useCyclic = %d", enable);
+}
+
+void RelayController::setHumidifierThreshold(int low, int high, int hysteresis) {
+    _humidifierSettings.thresholdLow = low;
+    _humidifierSettings.thresholdHigh = high;
+    _humidifierSettings.sensorHysteresis = hysteresis;
+    Serial.printf("[DEBUG] setHumidifierThreshold low=%d high=%d hyst=%d\n", low, high, hysteresis);
+}
+
+void RelayController::setHumidifierCycleTimes(int work, int idle) {
+    _humidifierSettings.cycleWorkTime = work;
+    _humidifierSettings.cycleIdleTime = idle;
+    Serial.printf("[DEBUG] setHumidifierCycleTimes work=%d idle=%d\n", work, idle);
 }
 
 RelayState RelayController::getAllStates() {

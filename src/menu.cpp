@@ -34,9 +34,22 @@ Menu::Menu() {
     
     _editHumidifierMode = 0;
     _editHumidifierValue = 0;
+    _editHumidifierValue2 = 0;
+    _editHumidifierSensorEnabled = false;
+    _editHumidifierCyclicEnabled = false;
+    
+    _editHour = 0;
+    _editMinute = 0;
+    _editIsHour = true;
+
+    _relay = nullptr;
     
     _manualToggleRequested = false;
     _manualToggleIndex = 0;
+
+    // Новые поля для режима редактирования
+    _editingActive = false;
+    _editingIndex = 0;
     
     menuInstance = this;
 }
@@ -47,7 +60,6 @@ void Menu::testEncoder() {
     Serial.printf("Пин DT: %d\n", ENCODER_DT);
     Serial.printf("Пин SW: %d\n", ENCODER_SW);
     
-    // Проверка чтения пинов напрямую
     pinMode(ENCODER_CLK, INPUT_PULLUP);
     pinMode(ENCODER_DT, INPUT_PULLUP);
     
@@ -61,17 +73,13 @@ void Menu::testEncoder() {
 }
 
 void Menu::begin() {
-   Serial.println("🔄 Инициализация энкодера...");
+    Serial.println("🔄 Инициализация энкодера...");
     
-    // Сначала настроим пины как INPUT_PULLUP
     pinMode(ENCODER_CLK, INPUT_PULLUP);
     pinMode(ENCODER_DT, INPUT_PULLUP);
     pinMode(ENCODER_SW, INPUT_PULLUP);
     
-    // Создаем объект энкодера
     _encoder = new AiEsp32RotaryEncoder(ENCODER_DT, ENCODER_CLK, ENCODER_SW, -1, 4);
-    
-    // Настраиваем параметры
     _encoder->begin();
     _encoder->setup(readEncoderISR);
     _encoder->setAcceleration(0);
@@ -79,11 +87,11 @@ void Menu::begin() {
     
     Serial.println("✅ Энкодер инициализирован");
     
-    // Запускаем тест
-    testEncoder();
+    // Для отладки можно раскомментировать, но в рабочей версии лучше убрать
+    // testEncoder();
 }
 
-// ISR функция (обработчик прерывания)
+// ISR функция
 void IRAM_ATTR Menu::readEncoderISR() {
     if (menuInstance && menuInstance->_encoder) {
         menuInstance->_encoder->readEncoder_ISR();
@@ -91,58 +99,45 @@ void IRAM_ATTR Menu::readEncoderISR() {
 }
 
 void Menu::update(float temp, float hum, float dsTemp, float light, RelayState relayState, Statistics stats) {
-    
     if (!_encoder) return;
     
-    // Чтение энкодера
     static long lastValue = 0;
     long currentValue = _encoder->readEncoder();
     
     if (currentValue != lastValue) {
         int delta = (currentValue > lastValue) ? 1 : -1;
-        
-        // Логируем вращение
         if (delta != 0) {
             logger.logEncoder(delta, _menuPosition);
         }
-        
-        // Вызываем обработчик вращения
         handleEncoderRotation(delta);
-        
         lastValue = currentValue;
     }
     
-    // ===== ОБРАБОТКА КНОПКИ =====
+    // Обработка кнопки энкодера
     static unsigned long pressStartTime = 0;
     static bool longPressHandled = false;
     bool buttonDown = _encoder->isEncoderButtonDown();
     
     if (buttonDown) {
-        // Кнопка нажата
         if (pressStartTime == 0) {
-            // Только что нажали
             pressStartTime = millis();
             longPressHandled = false;
-            logger.logEncoder(0, 999); // отладка: кнопка нажата
+            logger.logEncoder(0, 999);
         } else if (!longPressHandled && (millis() - pressStartTime > 1000)) {
-            // Долгое нажатие (больше 1 секунды)
-            logger.logEncoder(0, 998); // отладка: долгое нажатие
+            logger.logEncoder(0, 998);
             handleLongPress();
             longPressHandled = true;
         }
     } else {
-        // Кнопка отпущена
         if (pressStartTime != 0 && !longPressHandled) {
-            // Короткое нажатие (отпустили до 1 секунды)
-            logger.logEncoder(0, 997); // отладка: короткое нажатие
+            logger.logEncoder(0, 997);
             handleShortPress();
         }
-        // Сбрасываем все флаги
         pressStartTime = 0;
         longPressHandled = false;
     }
     
-    // Отрисовка экрана
+    // Отрисовка текущего экрана
     switch (_currentScreen) {
         case SCREEN_MAIN:
             drawMainScreen(temp, hum, dsTemp, light, relayState);
@@ -170,6 +165,9 @@ void Menu::update(float temp, float hum, float dsTemp, float light, RelayState r
             break;
         case SCREEN_HUMIDIFIER_CYCLIC:
             drawHumidifierCyclicScreen();
+            break;
+        case SCREEN_HUMIDIFIER_SCHEDULE:
+            drawHumidifierScheduleScreen();
             break;
         case SCREEN_LAMP_SETTINGS:
             drawLampSettingsScreen();
@@ -202,7 +200,7 @@ void Menu::handleEncoderRotation(int delta) {
             
         case SCREEN_SETTINGS:
             _menuPosition += delta;
-            if (_menuPosition < 0) _menuPosition = 3;  // 4 пункта: 0,1,2,3
+            if (_menuPosition < 0) _menuPosition = 3;
             if (_menuPosition > 3) _menuPosition = 0;
             break;
             
@@ -219,15 +217,41 @@ void Menu::handleEncoderRotation(int delta) {
             break;
             
         case SCREEN_HUMIDIFIER_THRESHOLD:
-            _editHumidifierValue += delta * 5;
-            if (_editHumidifierValue < 20) _editHumidifierValue = 20;
-            if (_editHumidifierValue > 90) _editHumidifierValue = 90;
+            if (_editingActive) {
+                // Режим редактирования: меняем значение в зависимости от _editingIndex
+                if (_editingIndex == 1) {
+                    _editHumidifierValue += delta * 5;
+                    if (_editHumidifierValue < 0) _editHumidifierValue = 0;
+                    if (_editHumidifierValue > 100) _editHumidifierValue = 100;
+                } else if (_editingIndex == 2) {
+                    _editHumidifierValue2 += delta * 5;
+                    if (_editHumidifierValue2 < 0) _editHumidifierValue2 = 0;
+                    if (_editHumidifierValue2 > 100) _editHumidifierValue2 = 100;
+                }
+            } else {
+                // Навигация: перемещаем курсор между пунктами 0,1,2
+                _menuPosition += delta;
+                if (_menuPosition < 0) _menuPosition = 2;
+                if (_menuPosition > 2) _menuPosition = 0;
+            }
             break;
             
         case SCREEN_HUMIDIFIER_CYCLIC:
-            _editHumidifierValue += delta * 10;
-            if (_editHumidifierValue < 10) _editHumidifierValue = 10;
-            if (_editHumidifierValue > 600) _editHumidifierValue = 600;
+            if (_editingActive) {
+                if (_editingIndex == 1) {
+                    _editHumidifierValue += delta * 10;
+                    if (_editHumidifierValue < 10) _editHumidifierValue = 10;
+                    if (_editHumidifierValue > 600) _editHumidifierValue = 600;
+                } else if (_editingIndex == 2) {
+                    _editHumidifierValue2 += delta * 10;
+                    if (_editHumidifierValue2 < 10) _editHumidifierValue2 = 10;
+                    if (_editHumidifierValue2 > 600) _editHumidifierValue2 = 600;
+                }
+            } else {
+                _menuPosition += delta;
+                if (_menuPosition < 0) _menuPosition = 2;
+                if (_menuPosition > 2) _menuPosition = 0;
+            }
             break;
             
         case SCREEN_LAMP_SETTINGS:
@@ -248,6 +272,7 @@ void Menu::handleEncoderRotation(int delta) {
             break;
     }
 }
+
 void Menu::handleShortPress() {
     logger.logMenu("Нажатие", _currentScreen);
     
@@ -263,7 +288,7 @@ void Menu::handleShortPress() {
                 case 0: // AUTO
                     _controlMode = MODE_AUTO;
                     _currentScreen = SCREEN_MAIN;
-                    _forceAutoUpdate = true;  // флаг принудительного обновления
+                    _forceAutoUpdate = true;
                     logger.logMenu("→ AUTO режим", _currentScreen);
                     break;
                 case 1: // MANUAL
@@ -317,45 +342,90 @@ void Menu::handleShortPress() {
             break;
             
         case SCREEN_HUMIDIFIER_SETTINGS:
-            // Выбор режима увлажнителя
             switch (_menuPosition) {
-                case 0: // По порогу
-                    _currentScreen = SCREEN_HUMIDIFIER_THRESHOLD;
-                    _editHumidifierValue = HUMIDITY_THRESHOLD;
-                    break;
-                case 1: // Циклический
-                    _currentScreen = SCREEN_HUMIDIFIER_CYCLIC;
-                    _editHumidifierValue = HUMIDIFIER_WORK_TIME;
-                    break;
-                case 2: // По расписанию
-                    if (_scheduler) {
-                        _scheduler->setHumidifierSchedule(8, 0, 22, 0, nullptr, 0);
-                        logger.log("УВЛАЖНИТЕЛЬ", "Режим: по расписанию (8:00-22:00)");
+                case 0: // Датчик (по порогу)
+                    if (_relay) {
+                        auto* s = _relay->getHumidifierSettings();
+                        _editHumidifierSensorEnabled = s->useSensor;
+                        _editHumidifierValue = s->thresholdLow;
+                        _editHumidifierValue2 = s->sensorHysteresis; // гистерезис
                     }
-                    _currentScreen = SCREEN_SETTINGS;
+                    _currentScreen = SCREEN_HUMIDIFIER_THRESHOLD;
+                    _menuPosition = 0;
+                    _editingActive = false;
+                    logger.logMenu("→ Настройка датчика", _currentScreen);
+                    break;
+                    
+                case 1: // Циклический
+                    if (_relay) {
+                        auto* s = _relay->getHumidifierSettings();
+                        _editHumidifierCyclicEnabled = s->useCyclic;
+                        _editHumidifierValue = s->cycleWorkTime;
+                        _editHumidifierValue2 = s->cycleIdleTime;
+                    }
+                    _currentScreen = SCREEN_HUMIDIFIER_CYCLIC;
+                    _menuPosition = 0;
+                    _editingActive = false;
+                    logger.logMenu("→ Настройка цикла", _currentScreen);
+                    break;
+                    
+                case 2: // Расписание
+                    _currentScreen = SCREEN_HUMIDIFIER_SCHEDULE;
+                    _menuPosition = 0;
+                    logger.logMenu("→ Настройка расписания", _currentScreen);
                     break;
             }
-            _menuPosition = 0;
             break;
             
         case SCREEN_HUMIDIFIER_THRESHOLD:
-            // Сохраняем порог
-            if (_scheduler) {
-                _scheduler->setHumidifierThreshold(_editHumidifierValue);
+            if (_editingActive) {
+                // Выходим из режима редактирования с сохранением
+                if (_relay) {
+                    auto* s = _relay->getHumidifierSettings();
+                    if (_editingIndex == 1) {
+                        s->thresholdLow = _editHumidifierValue;
+                        s->thresholdHigh = s->thresholdLow + s->sensorHysteresis;
+                    } else if (_editingIndex == 2) {
+                        s->sensorHysteresis = _editHumidifierValue2;
+                        s->thresholdHigh = s->thresholdLow + s->sensorHysteresis;
+                    }
+                }
+                _editingActive = false;
+            } else {
+                if (_menuPosition == 0) {
+                    _editHumidifierSensorEnabled = !_editHumidifierSensorEnabled;
+                    if (_relay) _relay->setHumidifierUseSensor(_editHumidifierSensorEnabled);
+                } else {
+                    // Входим в режим редактирования
+                    _editingActive = true;
+                    _editingIndex = _menuPosition;
+                }
             }
-            _currentScreen = SCREEN_SETTINGS;
             break;
             
         case SCREEN_HUMIDIFIER_CYCLIC:
-            // Сохраняем циклические параметры
-            if (_scheduler) {
-                _scheduler->setHumidifierCyclic(_editHumidifierValue, _editHumidifierValue * 10);
+            if (_menuPosition == 0) {
+                _editHumidifierCyclicEnabled = !_editHumidifierCyclicEnabled;
+                if (_relay) {
+                    _relay->setHumidifierUseCyclic(_editHumidifierCyclicEnabled);
+                }
+            } else {
+                if (!_editingActive) {
+                    _editingActive = true;
+                    _editingIndex = _menuPosition;
+                } else {
+                    _editingActive = false;
+                    if (_relay) {
+                        if (_editingIndex == 1 || _editingIndex == 2) {
+                            // Сохраняем оба значения при выходе из редактирования любого
+                            _relay->setHumidifierCycleTimes(_editHumidifierValue, _editHumidifierValue2);
+                        }
+                    }
+                }
             }
-            _currentScreen = SCREEN_SETTINGS;
             break;
             
         case SCREEN_LAMP_SETTINGS:
-            // Выбор лампы для настройки
             switch (_menuPosition) {
                 case 0:
                     _currentScreen = SCREEN_LAMP1_SETTINGS;
@@ -380,12 +450,31 @@ void Menu::handleShortPress() {
 }
 
 void Menu::handleLongPress() {
-    Serial.println("Долгое нажатие - возврат на главный");
+    // Сохраняем текущее редактируемое значение, если в режиме
+    if (_editingActive) {
+        if (_relay) {
+            if (_currentScreen == SCREEN_HUMIDIFIER_THRESHOLD) {
+                auto* s = _relay->getHumidifierSettings();
+                if (_editingIndex == 1) {
+                    s->thresholdLow = _editHumidifierValue;
+                    s->thresholdHigh = s->thresholdLow + s->sensorHysteresis;
+                } else if (_editingIndex == 2) {
+                    s->sensorHysteresis = _editHumidifierValue2;
+                    s->thresholdHigh = s->thresholdLow + s->sensorHysteresis;
+                }
+            } else if (_currentScreen == SCREEN_HUMIDIFIER_CYCLIC) {
+                if (_editingIndex == 1 || _editingIndex == 2) {
+                    _relay->setHumidifierCycleTimes(_editHumidifierValue, _editHumidifierValue2);
+                }
+            }
+        }
+        _editingActive = false;
+    }
     _currentScreen = SCREEN_MAIN;
     _menuPosition = 0;
 }
 
-// ===== ФУНКЦИИ ОТРИСОВКИ =====
+// ==================== ФУНКЦИИ ОТРИСОВКИ ====================
 
 void Menu::drawMainScreen(float temp, float hum, float dsTemp, float light, RelayState relayState) {
     display.clear();
@@ -396,18 +485,15 @@ void Menu::drawMainScreen(float temp, float hum, float dsTemp, float light, Rela
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     u8g2->setFont(u8g2_font_5x8_t_cyrillic);
     
-    // Время в правом верхнем углу
     u8g2->setCursor(85, 8);
     u8g2->print(timeStr.c_str());
     
-    // Датчики
     int line = 1;
     display.printSensorData("Темп:", temp, "C", line++);
     display.printSensorData("Влажн:", hum, "%", line++);
     display.printSensorData("Лампа:", dsTemp, "C", line++);
     display.printSensorData("Свет:", light, "lx", line++);
     
-    // Строка состояния реле
     u8g2->setCursor(0, 58);
     u8g2->print(relayState.lamp1 ? "[1]" : "[ ]");
     u8g2->setCursor(25, 58);
@@ -417,7 +503,6 @@ void Menu::drawMainScreen(float temp, float hum, float dsTemp, float light, Rela
     u8g2->setCursor(75, 58);
     u8g2->print(relayState.humidifier ? "[H]" : "[ ]");
     
-    // Режим AUTO/MAN
     u8g2->setCursor(105, 58);
     u8g2->print(_controlMode == MODE_AUTO ? "AUTO" : "MAN");
     
@@ -426,9 +511,7 @@ void Menu::drawMainScreen(float temp, float hum, float dsTemp, float light, Rela
 
 void Menu::drawModeSelectScreen() {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print("Выберите режим:");
@@ -437,22 +520,17 @@ void Menu::drawModeSelectScreen() {
     for (int i = 0; i < 3; i++) {
         u8g2->setCursor(10, 28 + i * 14);
         u8g2->print(modes[i]);
-        if (_menuPosition == i) {
-            u8g2->print(" <");
-        }
+        if (_menuPosition == i) u8g2->print(" <");
     }
-    
     display.update();
 }
 
 void Menu::drawManualScreen(RelayState relayState) {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     Adafruit_SSD1306* d = display.getDisplay();
     
     u8g2->setFont(u8g2_font_5x8_t_cyrillic);
-    
     u8g2->setCursor(0, 10);
     u8g2->print("РУЧНОЕ УПРАВЛЕНИЕ");
     d->drawLine(0, 12, 127, 12, SSD1306_WHITE);
@@ -477,14 +555,10 @@ void Menu::drawManualScreen(RelayState relayState) {
         
         u8g2->setCursor(0, yPos);
         u8g2->print(names[idx]);
-        
         u8g2->setCursor(70, yPos);
         u8g2->print(states[idx] ? "ON " : "OFF");
         
-        if (idx == _menuPosition) {
-            u8g2->setCursor(100, yPos);
-            u8g2->print("<");
-        }
+        if (idx == _menuPosition) u8g2->setCursor(100, yPos); u8g2->print("<");
     }
     
     if (startItem > 0) {
@@ -504,13 +578,11 @@ void Menu::drawManualScreen(RelayState relayState) {
 
 void Menu::drawSettingsScreen() {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print("НАСТРОЙКИ");
-
-        // Защита: если _menuPosition вдруг вышел за границы, возвращаем
+    
     if (_menuPosition < 0) _menuPosition = 0;
     if (_menuPosition > 3) _menuPosition = 3;
     
@@ -518,19 +590,14 @@ void Menu::drawSettingsScreen() {
     for (int i = 0; i < 4; i++) {
         u8g2->setCursor(10, 28 + i * 14);
         u8g2->print(items[i]);
-        if (_menuPosition == i) {
-            u8g2->print(" <");
-        }
+        if (_menuPosition == i) u8g2->print(" <");
     }
-    
     display.update();
 }
 
 void Menu::drawThresholdsScreen() {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print("ПОРОГИ");
@@ -556,9 +623,7 @@ void Menu::drawThresholdsScreen() {
 
 void Menu::drawStatsScreen(Statistics stats) {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    
     u8g2->setFont(u8g2_font_5x8_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print("СТАТИСТИКА");
@@ -587,7 +652,6 @@ void Menu::drawStatsScreen(Statistics stats) {
 
 void Menu::drawHumidifierSettingsScreen() {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
@@ -597,7 +661,48 @@ void Menu::drawHumidifierSettingsScreen() {
     for (int i = 0; i < 3; i++) {
         u8g2->setCursor(10, 30 + i * 14);
         u8g2->print(modes[i]);
-        if (_menuPosition == i) {
+        if (_menuPosition == i) u8g2->print(" <");
+    }
+    display.update();
+}
+
+void Menu::drawHumidifierThresholdScreen() {
+    display.clear();
+    U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
+    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
+    u8g2->setCursor(0, 12);
+    u8g2->print("ДАТЧИК ВЛАЖНОСТИ");
+    
+    // Пункт 0: Включено
+    u8g2->setCursor(10, 30);
+    u8g2->print("Включено:");
+    u8g2->setCursor(80, 30);
+    u8g2->print(_editHumidifierSensorEnabled ? "[X]" : "[ ]");
+    if (_menuPosition == 0 && !_editingActive) {
+        u8g2->print(" <");
+    }
+    
+    // Пункт 1: Нижний порог
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "Порог вкл: %d %%", _editHumidifierValue);
+    u8g2->setCursor(10, 45);
+    u8g2->print(buffer);
+    if (_menuPosition == 1) {
+        if (_editingActive && _editingIndex == 1) {
+            u8g2->print(" [ред]");
+        } else if (!_editingActive) {
+            u8g2->print(" <");
+        }
+    }
+    
+    // Пункт 2: Гистерезис
+    snprintf(buffer, sizeof(buffer), "Гистерезис: %d %%", _editHumidifierValue2);
+    u8g2->setCursor(10, 60);
+    u8g2->print(buffer);
+    if (_menuPosition == 2) {
+        if (_editingActive && _editingIndex == 2) {
+            u8g2->print(" [ред]");
+        } else if (!_editingActive) {
             u8g2->print(" <");
         }
     }
@@ -605,52 +710,63 @@ void Menu::drawHumidifierSettingsScreen() {
     display.update();
 }
 
-void Menu::drawHumidifierThresholdScreen() {
-    display.clear();
-    
-    U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
-    u8g2->setCursor(0, 12);
-    u8g2->print("ПОРОГ ВЛАЖНОСТИ");
-    
-    char buffer[32];
-    snprintf(buffer, sizeof(buffer), "%d %%", _editHumidifierValue);
-    u8g2->setCursor(10, 40);
-    u8g2->print(buffer);
-    
-    u8g2->setCursor(0, 58);
-    u8g2->print("Вращайте для изменения");
-    
-    display.update();
-}
-
 void Menu::drawHumidifierCyclicScreen() {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print("ЦИКЛИЧЕСКИЙ РЕЖИМ");
     
+    // Пункт 0: Включено
+    u8g2->setCursor(10, 30);
+    u8g2->print("Включено:");
+    u8g2->setCursor(80, 30);
+    u8g2->print(_editHumidifierCyclicEnabled ? "[X]" : "[ ]");
+    if (_menuPosition == 0 && !_editingActive) {
+        u8g2->print(" <");
+    }
+    
+    // Пункт 1: Время работы
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "Работа: %d сек", _editHumidifierValue);
+    u8g2->setCursor(10, 45);
+    u8g2->print(buffer);
+    if (_menuPosition == 1) {
+        if (_editingActive && _editingIndex == 1) {
+            u8g2->print(" [ред]");
+        } else if (!_editingActive) {
+            u8g2->print(" <");
+        }
+    }
+    
+    // Пункт 2: Время отдыха
+    snprintf(buffer, sizeof(buffer), "Отдых: %d сек", _editHumidifierValue2);
+    u8g2->setCursor(10, 60);
+    u8g2->print(buffer);
+    if (_menuPosition == 2) {
+        if (_editingActive && _editingIndex == 2) {
+            u8g2->print(" [ред]");
+        } else if (!_editingActive) {
+            u8g2->print(" <");
+        }
+    }
+    
+    display.update();
+}
+
+void Menu::drawHumidifierScheduleScreen() {
+    display.clear();
+    U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
+    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
+    u8g2->setCursor(0, 12);
+    u8g2->print("РАСПИСАНИЕ");
     u8g2->setCursor(10, 35);
-    u8g2->print(buffer);
-    
-    snprintf(buffer, sizeof(buffer), "Отдых: %d сек", _editHumidifierValue * 10);
-    u8g2->setCursor(10, 50);
-    u8g2->print(buffer);
-    
-    u8g2->setCursor(0, 62);
-    u8g2->setFont(u8g2_font_5x8_t_cyrillic);
-    u8g2->print("Вращайте для работы");
-    
+    u8g2->print("Скоро будет...");
     display.update();
 }
 
 void Menu::drawLampSettingsScreen() {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
@@ -660,17 +776,13 @@ void Menu::drawLampSettingsScreen() {
     for (int i = 0; i < 3; i++) {
         u8g2->setCursor(10, 30 + i * 14);
         u8g2->print(lamps[i]);
-        if (_menuPosition == i) {
-            u8g2->print(" <");
-        }
+        if (_menuPosition == i) u8g2->print(" <");
     }
-    
     display.update();
 }
 
 void Menu::drawLampDetailScreen(int lampNumber) {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     
@@ -679,7 +791,7 @@ void Menu::drawLampDetailScreen(int lampNumber) {
     u8g2->setCursor(0, 12);
     u8g2->print(title);
     
-    // Здесь будут настройки конкретной лампы
+    // Заглушка, будет доработано позже
     u8g2->setCursor(0, 35);
     u8g2->print("Режим: AUTO");
     u8g2->setCursor(0, 50);
@@ -690,14 +802,11 @@ void Menu::drawLampDetailScreen(int lampNumber) {
 
 void Menu::drawConfirmScreen(const char* message) {
     display.clear();
-    
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    
     u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 30);
     u8g2->print(message);
     u8g2->setCursor(0, 50);
     u8g2->print("Нажмите для подтверждения");
-    
     display.update();
 }

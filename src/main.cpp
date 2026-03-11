@@ -94,6 +94,7 @@ void setup() {
     // Энкодер и меню
     menu.begin();
     menu.setScheduler(&scheduler);
+    menu.setRelayController(&relays);
     logger.log("МЕНЮ", "✅ Инициализировано");
     
     // Подключаемся к Wi-Fi
