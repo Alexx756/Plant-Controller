@@ -469,12 +469,20 @@ void Menu::handleShortPress() {
                     
                     if (s) {
                         if (_menuPosition == 0) { // Включить/выключить датчик
-                            s->useSensor = !s->useSensor;
+                            bool currentState = s->useSensor;
+                            int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS;
+                            _relay->setLampUseSensor(lampIndex + 1, !currentState);
                         } else if (_menuPosition == 1) { // Порог
+                            // Загружаем текущие значения
+                            _editHumidifierValue = s->thresholdLow;
+                            _editHumidifierValue2 = s->sensorHysteresis;
                             // Входим в режим редактирования
                             _editingActive = true;
                             _editingIndex = _menuPosition;
                         } else if (_menuPosition == 2) { // Гистерезис
+                            // Загружаем текущие значения
+                            _editHumidifierValue = s->thresholdLow;
+                            _editHumidifierValue2 = s->sensorHysteresis;
                             // Входим в режим редактирования
                             _editingActive = true;
                             _editingIndex = _menuPosition;
@@ -558,6 +566,14 @@ void Menu::handleLongPress() {
             } else if (_currentScreen == SCREEN_HUMIDIFIER_CYCLIC) {
                 if (_editingIndex == 1 || _editingIndex == 2) {
                     _relay->setHumidifierCycleTimes(_editHumidifierValue, _editHumidifierValue2);
+                }
+            } else if (_currentScreen == SCREEN_LAMP1_SETTINGS || _currentScreen == SCREEN_LAMP2_SETTINGS || _currentScreen == SCREEN_LAMP3_SETTINGS) {
+                // Сохраняем настройки ламп через сеттеры
+                int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS + 1;
+                if (_editingIndex == 1) { // Порог
+                    _relay->setLampThreshold(lampIndex, _editHumidifierValue, _editHumidifierValue2);
+                } else if (_editingIndex == 2) { // Гистерезис
+                    _relay->setLampHysteresis(lampIndex, _editHumidifierValue2);
                 }
             }
         }

@@ -2,6 +2,7 @@
 #define RELAY_H
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include "config.h"
 #include "schedule.h"
 
@@ -28,11 +29,18 @@ private:
     GlobalSettings _globalSettings;
     ScheduleManager* _schedManager;  // указатель на планировщик
     
+    // Preferences for NVS storage
+    Preferences prefs;
+    
     // Внутренние методы для расчета состояния
     bool shouldChannelBeOn(ChannelSettings& settings, float sensorValue, int hour, int min, int day, bool currentState);
     bool checkSensor(ChannelSettings& settings, float sensorValue, bool currentState);
     bool checkSchedule(ChannelSettings& settings, int hour, int min, int day);
     bool checkCycle(ChannelSettings& settings);
+    
+    // Методы для работы с NVS
+    void loadSettingsFromNVS();
+    void saveSettingsToNVS();
     
 public:
     RelayController();
@@ -71,6 +79,11 @@ public:
     ChannelSettings* getLamp3Settings() { return &_lamp3Settings; }
     GlobalSettings* getGlobalSettings() { return &_globalSettings; }
     void setLampSchedule(int lamp, int startH, int startM, int endH, int endM, int* days, int daysCount);
+    
+    // Настройки ламп
+    void setLampUseSensor(int lamp, bool enable);
+    void setLampThreshold(int lamp, int low, int hysteresis);
+    void setLampHysteresis(int lamp, int hysteresis);
 };
 
 #endif

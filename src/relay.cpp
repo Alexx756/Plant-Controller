@@ -1,6 +1,7 @@
 #include "relay.h"
 #include "logger.h"
 #include <Arduino.h>
+#include <Preferences.h>
 
 RelayController::RelayController() {
     // Инициализация по умолчанию
@@ -109,6 +110,10 @@ void RelayController::begin() {
     
     setAllLamps(false);
     setHumidifier(false);
+    
+    // Initialize NVS and load settings
+    prefs.begin("plantCtrl", false);
+    loadSettingsFromNVS();
     
     logger.log("РЕЛЕ", "✅ Инициализированы");
 }
@@ -226,7 +231,6 @@ void RelayController::update(float light, float humidity, int hour, int min, int
                   _humidifierSettings.useSensor,
                   _humidifierSettings.useCyclic,
                   _humidifierSettings.useSchedule);
-    
     bool newLamp1 = shouldChannelBeOn(_lamp1Settings, light, hour, min, day, _lamp1State);
     bool newLamp2 = shouldChannelBeOn(_lamp2Settings, light, hour, min, day, _lamp2State);
     bool newLamp3 = shouldChannelBeOn(_lamp3Settings, light, hour, min, day, _lamp3State);
@@ -273,6 +277,7 @@ void RelayController::setHumidifierUseSensor(bool enable) {
     _humidifierSettings.useSensor = enable;
     logger.logDebug("setHumidifierUseSensor(%d)", enable);
     logger.logf("РЕЛЕ", "useSensor = %d", enable);
+    saveSettingsToNVS();
 }
 
 void RelayController::setHumidifierUseCyclic(bool enable) {
@@ -280,6 +285,7 @@ void RelayController::setHumidifierUseCyclic(bool enable) {
     _humidifierSettings.cycleEnabled = enable;
     logger.logDebug("setHumidifierUseCyclic(%d)", enable);
     logger.logf("РЕЛЕ", "useCyclic = %d", enable);
+    saveSettingsToNVS();
 }
 
 void RelayController::setHumidifierThreshold(int low, int high, int hysteresis) {
@@ -287,6 +293,7 @@ void RelayController::setHumidifierThreshold(int low, int high, int hysteresis) 
     _humidifierSettings.thresholdHigh = high;
     _humidifierSettings.sensorHysteresis = hysteresis;
     logger.logDebug("setHumidifierThreshold low=%d high=%d hyst=%d", low, high, hysteresis);
+    saveSettingsToNVS();
 }
 
 void RelayController::setHumidifierCycleTimes(int work, int idle) {
@@ -294,6 +301,7 @@ void RelayController::setHumidifierCycleTimes(int work, int idle) {
     _humidifierSettings.cycleIdleTime = idle;
     _humidifierSettings.cycleEnabled = _humidifierSettings.useCyclic;
     logger.logDebug("setHumidifierCycleTimes work=%d idle=%d", work, idle);
+    saveSettingsToNVS();
 }
 
 RelayState RelayController::getAllStates() {
@@ -313,7 +321,6 @@ void RelayController::setLampSchedule(int lamp, int startH, int startM, int endH
         case 3: settings = &_lamp3Settings; break;
         default: return;
     }
-    
     settings->useSchedule = true;
     settings->scheduleStartHour = startH;
     settings->scheduleStartMin = startM;
@@ -332,6 +339,50 @@ void RelayController::setLampSchedule(int lamp, int startH, int startM, int endH
     
     logger.logf("РЕЛЕ", "Лампа %d расписание: %02d:%02d-%02d:%02d", 
                 lamp, startH, startM, endH, endM);
+    saveSettingsToNVS();
+}
+
+// НОВЫЕ МЕТОДЫ ДЛЯ НАСТРОЙКИ ЛАМП
+void RelayController::setLampUseSensor(int lamp, bool enable) {
+    ChannelSettings* settings = nullptr;
+    switch(lamp) {
+        case 1: settings = &_lamp1Settings; break;
+        case 2: settings = &_lamp2Settings; break;
+        case 3: settings = &_lamp3Settings; break;
+        default: return;
+    }
+    settings->useSensor = enable;
+    logger.logf("РЕЛЕ", "Лампа %d useSensor = %d", lamp, enable);
+    saveSettingsToNVS();
+}
+
+void RelayController::setLampThreshold(int lamp, int low, int hysteresis) {
+    ChannelSettings* settings = nullptr;
+    switch(lamp) {
+        case 1: settings = &_lamp1Settings; break;
+        case 2: settings = &_lamp2Settings; break;
+        case 3: settings = &_lamp3Settings; break;
+        default: return;
+    }
+    settings->thresholdLow = low;
+    settings->thresholdHigh = low + hysteresis;
+    settings->sensorHysteresis = hysteresis;
+    logger.logf("РЕЛЕ", "Лампа %d threshold = %d, hysteresis = %d", lamp, low, hysteresis);
+    saveSettingsToNVS();
+}
+
+void RelayController::setLampHysteresis(int lamp, int hysteresis) {
+    ChannelSettings* settings = nullptr;
+    switch(lamp) {
+        case 1: settings = &_lamp1Settings; break;
+        case 2: settings = &_lamp2Settings; break;
+        case 3: settings = &_lamp3Settings; break;
+        default: return;
+    }
+    settings->sensorHysteresis = hysteresis;
+    settings->thresholdHigh = settings->thresholdLow + hysteresis;
+    logger.logf("РЕЛЕ", "Лампа %d hysteresis = %d", lamp, hysteresis);
+    saveSettingsToNVS();
 }
 
 void RelayController::manualToggle(int index) {
@@ -358,4 +409,60 @@ void RelayController::handleSerialCommand(char cmd) {
             break;
         }
     }
+}
+
+void RelayController::loadSettingsFromNVS() {
+    bool success = true;
+
+    // Lamp 1
+    if (!prefs.getBytes("lamp1", &_lamp1Settings, sizeof(_lamp1Settings))) {
+        success = false;
+    } else {
+        // After loading, reset the runtime state for cycle
+        _lamp1Settings.cycleLastState = false;
+        _lamp1Settings.cycleLastSwitch = 0;
+    }
+
+    // Lamp 2
+    if (!prefs.getBytes("lamp2", &_lamp2Settings, sizeof(_lamp2Settings))) {
+        success = false;
+    } else {
+        _lamp2Settings.cycleLastState = false;
+        _lamp2Settings.cycleLastSwitch = 0;
+    }
+
+    // Lamp 3
+    if (!prefs.getBytes("lamp3", &_lamp3Settings, sizeof(_lamp3Settings))) {
+        success = false;
+    } else {
+        _lamp3Settings.cycleLastState = false;
+        _lamp3Settings.cycleLastSwitch = 0;
+    }
+
+    // Humidifier
+    if (!prefs.getBytes("humidifier", &_humidifierSettings, sizeof(_humidifierSettings))) {
+        success = false;
+    } else {
+        _humidifierSettings.cycleLastState = false;
+        _humidifierSettings.cycleLastSwitch = 0;
+    }
+
+    // Global
+    if (!prefs.getBytes("global", &_globalSettings, sizeof(_globalSettings))) {
+        success = false;
+    }
+
+    if (!success) {
+        // If any setting failed to load, load defaults and save
+        loadDefaults();
+        saveSettingsToNVS();
+    }
+}
+
+void RelayController::saveSettingsToNVS() {
+    prefs.putBytes("lamp1", &_lamp1Settings, sizeof(_lamp1Settings));
+    prefs.putBytes("lamp2", &_lamp2Settings, sizeof(_lamp2Settings));
+    prefs.putBytes("lamp3", &_lamp3Settings, sizeof(_lamp3Settings));
+    prefs.putBytes("humidifier", &_humidifierSettings, sizeof(_humidifierSettings));
+    prefs.putBytes("global", &_globalSettings, sizeof(_globalSettings));
 }
