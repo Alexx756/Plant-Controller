@@ -61,4 +61,74 @@ public:
     HumidifierSettings getHumidifierSettings() { return _humidifier; }
 };
 
+// ============ РЕДАКТОР РАСПИСАНИЯ ЛАМП ============
+class LampScheduleEditor {
+private:
+    int _lampNumber;                    // номер лампы (1-3)
+    bool _useSensor;                    // использовать датчик
+    bool _useSchedule;                  // использовать расписание
+    int _threshold;                     // порог включения
+    int _hysteresis;                    // гистерезис
+    
+    // Расписание
+    bool _scheduleDays[7];              // дни недели (пн-вс)
+    int _scheduleStartHour;             // время начала
+    int _scheduleStartMin;
+    int _scheduleEndHour;               // время конца
+    int _scheduleEndMin;
+    
+    // Состояние редактора
+    int _editMode;                      // 0=дни, 1=время начала, 2=время конца
+    bool _editTimeMode;                 // false=часы, true=минуты
+    int _editHour;                      // редактируемый час
+    int _editMinute;                    // редактируемая минута
+    
+    ScheduleManager* _schedManager;     // указатель на планировщик
+    
+public:
+    LampScheduleEditor();
+    void begin(ScheduleManager* sched);
+    
+    // Начало редактирования (загрузка настроек лампы)
+    void startEditing(int lampNumber, bool useSensor, bool useSchedule, 
+                      int threshold, int hysteresis,
+                      const bool days[7], int startHour, int startMin, 
+                      int endHour, int endMin);
+    
+    // Навигация
+    void navigate(int delta);
+    void switchEditMode();  // переключение между режимами редактирования
+    void toggleDay(int dayIndex);  // переключение дня недели
+    
+    // Редактирование времени
+    void editTime(int delta);
+    void toggleTimeMode();  // переключение между часами/минутами
+    
+    // Изменение значений
+    void toggleUseSensor();
+    void toggleUseSchedule();
+    void changeThreshold(int delta);
+    void changeHysteresis(int delta);
+    
+    // Сохранение
+    void saveToSchedule();
+    
+    // Геттеры для отрисовки
+    int getLampNumber() const { return _lampNumber; }
+    bool getUseSensor() const { return _useSensor; }
+    bool getUseSchedule() const { return _useSchedule; }
+    int getThreshold() const { return _threshold; }
+    int getHysteresis() const { return _hysteresis; }
+    bool getScheduleDay(int day) const { return _scheduleDays[day]; }
+    int getScheduleStartHour() const { return _scheduleStartHour; }
+    int getScheduleStartMin() const { return _scheduleStartMin; }
+    int getScheduleEndHour() const { return _scheduleEndHour; }
+    int getScheduleEndMin() const { return _scheduleEndMin; }
+    int getEditMode() const { return _editMode; }
+    bool getEditTimeMode() const { return _editTimeMode; }
+    int getEditHour() const { return _editHour; }
+    int getEditMinute() const { return _editMinute; }
+    bool isEditing() const { return _editMode > 0 || _editTimeMode; }
+};
+
 #endif

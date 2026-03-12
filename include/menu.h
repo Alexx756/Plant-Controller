@@ -107,6 +107,7 @@ private:
 
     // ===== УКАЗАТЕЛИ НА ДРУГИЕ МОДУЛИ =====
     RelayController* _relay;             // указатель на контроллер реле
+    LampScheduleEditor* _lampEditor;     // указатель на редактор расписания ламп
 
     // ===== НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ РЕЖИМА РЕДАКТИРОВАНИЯ =====
     bool _editingActive;                 // флаг: находимся в режиме редактирования значения
@@ -158,6 +159,7 @@ public:
 
     // Сеттеры
     void setScheduler(ScheduleManager* sched) { _scheduler = sched; }
+    void setLampEditor(LampScheduleEditor* editor) { _lampEditor = editor; }
     void setControlMode(ControlMode mode) { _controlMode = mode; }
     void setThresholds(Thresholds th) { _thresholds = th; }
     void setRelayController(RelayController* relay) { _relay = relay; }
