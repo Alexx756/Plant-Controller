@@ -25,6 +25,14 @@ void RelayController::loadDefaults() {
     _lamp1Settings.thresholdHigh = LIGHT_THRESHOLD + 50;
     _lamp1Settings.sensorHysteresis = 50;
     _lamp1Settings.cycleEnabled = false;
+    // Инициализация расписания
+    _lamp1Settings.scheduleStartHour = 8;
+    _lamp1Settings.scheduleStartMin = 0;
+    _lamp1Settings.scheduleEndHour = 20;
+    _lamp1Settings.scheduleEndMin = 0;
+    for (int i = 0; i < 7; i++) {
+        _lamp1Settings.scheduleDays[i] = false;
+    }
     
     // ===== Лампа 2 =====
     _lamp2Settings.index = 2;
@@ -37,6 +45,14 @@ void RelayController::loadDefaults() {
     _lamp2Settings.thresholdHigh = LIGHT_THRESHOLD + 50;
     _lamp2Settings.sensorHysteresis = 50;
     _lamp2Settings.cycleEnabled = false;
+    // Инициализация расписания
+    _lamp2Settings.scheduleStartHour = 8;
+    _lamp2Settings.scheduleStartMin = 0;
+    _lamp2Settings.scheduleEndHour = 20;
+    _lamp2Settings.scheduleEndMin = 0;
+    for (int i = 0; i < 7; i++) {
+        _lamp2Settings.scheduleDays[i] = false;
+    }
     
     // ===== Лампа 3 =====
     _lamp3Settings.index = 3;
@@ -49,6 +65,14 @@ void RelayController::loadDefaults() {
     _lamp3Settings.thresholdHigh = LIGHT_THRESHOLD + 50;
     _lamp3Settings.sensorHysteresis = 50;
     _lamp3Settings.cycleEnabled = false;
+    // Инициализация расписания
+    _lamp3Settings.scheduleStartHour = 8;
+    _lamp3Settings.scheduleStartMin = 0;
+    _lamp3Settings.scheduleEndHour = 20;
+    _lamp3Settings.scheduleEndMin = 0;
+    for (int i = 0; i < 7; i++) {
+        _lamp3Settings.scheduleDays[i] = false;
+    }
     
     // ===== Увлажнитель =====
     _humidifierSettings.index = 4;
@@ -268,6 +292,7 @@ void RelayController::setHumidifierThreshold(int low, int high, int hysteresis) 
 void RelayController::setHumidifierCycleTimes(int work, int idle) {
     _humidifierSettings.cycleWorkTime = work;
     _humidifierSettings.cycleIdleTime = idle;
+    _humidifierSettings.cycleEnabled = _humidifierSettings.useCyclic;
     logger.logDebug("setHumidifierCycleTimes work=%d idle=%d", work, idle);
 }
 
@@ -278,6 +303,35 @@ RelayState RelayController::getAllStates() {
     state.lamp3 = _lamp3State;
     state.humidifier = _humidifierState;
     return state;
+}
+
+void RelayController::setLampSchedule(int lamp, int startH, int startM, int endH, int endM, int* days, int daysCount) {
+    ChannelSettings* settings = nullptr;
+    switch(lamp) {
+        case 1: settings = &_lamp1Settings; break;
+        case 2: settings = &_lamp2Settings; break;
+        case 3: settings = &_lamp3Settings; break;
+        default: return;
+    }
+    
+    settings->useSchedule = true;
+    settings->scheduleStartHour = startH;
+    settings->scheduleStartMin = startM;
+    settings->scheduleEndHour = endH;
+    settings->scheduleEndMin = endM;
+    // Инициализируем все дни как false
+    for (int i = 0; i < 7; i++) {
+        settings->scheduleDays[i] = false;
+    }
+    // Устанавливаем выбранные дни
+    for (int i = 0; i < daysCount; i++) {
+        if (days[i] >= 0 && days[i] < 7) {
+            settings->scheduleDays[days[i]] = true;
+        }
+    }
+    
+    logger.logf("РЕЛЕ", "Лампа %d расписание: %02d:%02d-%02d:%02d", 
+                lamp, startH, startM, endH, endM);
 }
 
 void RelayController::manualToggle(int index) {

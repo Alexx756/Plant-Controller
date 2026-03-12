@@ -13,17 +13,18 @@ enum ScreenType {
     SCREEN_MODE_SELECT,              // Выбор режима (AUTO/MANUAL/SETTINGS)
     SCREEN_MANUAL,                   // Ручное управление реле
     SCREEN_SETTINGS,                  // Меню настроек
-    SCREEN_THRESHOLDS,                // Настройка порогов
     SCREEN_STATS,                     // Статистика
     SCREEN_CONFIRM,                    // Подтверждение действий
     SCREEN_HUMIDIFIER_SETTINGS,        // выбор режима увлажнителя
     SCREEN_HUMIDIFIER_THRESHOLD,       // настройка порога
     SCREEN_HUMIDIFIER_CYCLIC,          // настройка циклов
-    SCREEN_HUMIDIFIER_SCHEDULE,         //настройка расписания
-    SCREEN_LAMP_SETTINGS,               // настройки ламп (общее меню)
-    SCREEN_LAMP1_SETTINGS,              // настройки лампы 1
-    SCREEN_LAMP2_SETTINGS,              // настройки лампы 2
-    SCREEN_LAMP3_SETTINGS                // настройки лампы 3
+    SCREEN_HUMIDIFIER_SCHEDULE,        // настройка расписания
+    SCREEN_LAMP_SETTINGS,              // настройки ламп (общее меню)
+    SCREEN_LAMP1_SETTINGS,             // настройки лампы 1
+    SCREEN_LAMP2_SETTINGS,             // настройки лампы 2
+    SCREEN_LAMP3_SETTINGS,             // настройки лампы 3
+    SCREEN_LAMP_SCHEDULE,              // настройка расписания ламп
+    SCREEN_LAMP_DAYS,                  // выбор дней недели для ламп
 };
 
 // Режим управления
@@ -82,6 +83,23 @@ private:
     int _editHumidifierValue2;           // второе редактируемое значение (гистерезис / время отдыха)
     bool _editHumidifierSensorEnabled;   // для экрана порога (useSensor)
     bool _editHumidifierCyclicEnabled;   // для экрана цикла (useCyclic)
+    
+    // ===== НАСТРОЙКИ ЛАМП =====
+    int _editLampNumber;                 // номер редактируемой лампы (1-3)
+    bool _editLampUseSensor;             // использовать датчик света
+    bool _editLampUseSchedule;           // использовать расписание
+    int _editLampThreshold;              // порог включения (для датчика)
+    int _editLampHysteresis;             // гистерезис
+    // Расписание
+    bool _editLampScheduleDays[7];       // дни недели
+    int _editLampScheduleStartHour;      // время начала
+    int _editLampScheduleStartMin;
+    int _editLampScheduleEndHour;        // время конца
+    int _editLampScheduleEndMin;
+    
+    // ===== РЕДАКТИРОВАНИЕ РАСПИСАНИЯ ЛАМП =====
+    int _lampScheduleEditMode;           // 0=дни, 1=время начала, 2=время конца
+    bool _lampEditTimeMode;              // false=часы, true=минуты (для времени)
 
     // ===== РЕДАКТИРОВАНИЕ ВРЕМЕНИ =====
     int _editHour, _editMinute;          // часы и минуты для редактирования времени
@@ -109,8 +127,9 @@ private:
     void drawHumidifierScheduleScreen(); 
     void drawLampSettingsScreen();
     void drawLampDetailScreen(int lampNumber);
+    void drawLampScheduleScreen(int lampNumber);
+    void drawLampDaysScreen();
     void drawSettingsScreen();
-    void drawThresholdsScreen();
     void drawStatsScreen(Statistics stats);
     void drawConfirmScreen(const char* message);
 

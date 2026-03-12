@@ -38,6 +38,24 @@ Menu::Menu() {
     _editHumidifierSensorEnabled = false;
     _editHumidifierCyclicEnabled = false;
     
+    // Настройки ламп
+    _editLampNumber = 1;
+    _editLampUseSensor = true;
+    _editLampUseSchedule = false;
+    _editLampThreshold = LIGHT_THRESHOLD;
+    _editLampHysteresis = 50;
+    for (int i = 0; i < 7; i++) {
+        _editLampScheduleDays[i] = true; // все дни по умолчанию
+    }
+    _editLampScheduleStartHour = 8;
+    _editLampScheduleStartMin = 0;
+    _editLampScheduleEndHour = 20;
+    _editLampScheduleEndMin = 0;
+    
+    // Редактирование расписания ламп
+    _lampScheduleEditMode = 0; // 0=дни, 1=время начала, 2=время конца
+    _lampEditTimeMode = false; // false=часы, true=минуты
+    
     _editHour = 0;
     _editMinute = 0;
     _editIsHour = true;
@@ -151,9 +169,6 @@ void Menu::update(float temp, float hum, float dsTemp, float light, RelayState r
         case SCREEN_SETTINGS:
             drawSettingsScreen();
             break;
-        case SCREEN_THRESHOLDS:
-            drawThresholdsScreen();
-            break;
         case SCREEN_STATS:
             drawStatsScreen(stats);
             break;
@@ -176,6 +191,12 @@ void Menu::update(float temp, float hum, float dsTemp, float light, RelayState r
         case SCREEN_LAMP2_SETTINGS:
         case SCREEN_LAMP3_SETTINGS:
             drawLampDetailScreen(_currentScreen - SCREEN_LAMP1_SETTINGS + 1);
+            break;
+        case SCREEN_LAMP_SCHEDULE:
+            drawLampScheduleScreen(_currentScreen - SCREEN_LAMP1_SETTINGS + 1);
+            break;
+        case SCREEN_LAMP_DAYS:
+            drawLampDaysScreen();
             break;
         default:
             break;
@@ -202,12 +223,6 @@ void Menu::handleEncoderRotation(int delta) {
             _menuPosition += delta;
             if (_menuPosition < 0) _menuPosition = 3;
             if (_menuPosition > 3) _menuPosition = 0;
-            break;
-            
-        case SCREEN_THRESHOLDS:
-            _menuPosition += delta;
-            if (_menuPosition < 0) _menuPosition = 2;
-            if (_menuPosition > 2) _menuPosition = 0;
             break;
             
         case SCREEN_HUMIDIFIER_SETTINGS:
@@ -264,8 +279,22 @@ void Menu::handleEncoderRotation(int delta) {
         case SCREEN_LAMP2_SETTINGS:
         case SCREEN_LAMP3_SETTINGS:
             _menuPosition += delta;
+            if (_menuPosition < 0) _menuPosition = 3;
+            if (_menuPosition > 3) _menuPosition = 0;
+            break;
+            
+        case SCREEN_LAMP_SCHEDULE:
+            // Навигация в расписании: 0=дни, 1=время начала, 2=время конца
+            _menuPosition += delta;
             if (_menuPosition < 0) _menuPosition = 2;
             if (_menuPosition > 2) _menuPosition = 0;
+            break;
+            
+        case SCREEN_LAMP_DAYS:
+            // Навигация по дням недели (0-6)
+            _menuPosition += delta;
+            if (_menuPosition < 0) _menuPosition = 6;
+            if (_menuPosition > 6) _menuPosition = 0;
             break;
             
         default:
@@ -313,28 +342,19 @@ void Menu::handleShortPress() {
             
         case SCREEN_SETTINGS:
             switch (_menuPosition) {
-                case 0: // Пороги
-                    _currentScreen = SCREEN_THRESHOLDS;
-                    _menuPosition = 0;
-                    break;
-                case 1: // Лампы
+                case 0: // Лампы
                     _currentScreen = SCREEN_LAMP_SETTINGS;
                     _menuPosition = 0;
                     break;
-                case 2: // Увлажнитель
+                case 1: // Увлажнитель
                     _currentScreen = SCREEN_HUMIDIFIER_SETTINGS;
                     _menuPosition = 0;
                     break;
-                case 3: // Статистика
+                case 2: // Статистика
                     _currentScreen = SCREEN_STATS;
                     _menuPosition = 0;
                     break;
             }
-            break;
-            
-        case SCREEN_THRESHOLDS:
-            Serial.printf("Выбран порог %d для редактирования\n", _menuPosition);
-            // TODO: добавить редактирование порогов
             break;
             
         case SCREEN_STATS:
@@ -429,15 +449,135 @@ void Menu::handleShortPress() {
             switch (_menuPosition) {
                 case 0:
                     _currentScreen = SCREEN_LAMP1_SETTINGS;
+                    _menuPosition = 0;
                     break;
                 case 1:
                     _currentScreen = SCREEN_LAMP2_SETTINGS;
+                    _menuPosition = 0;
                     break;
                 case 2:
                     _currentScreen = SCREEN_LAMP3_SETTINGS;
+                    _menuPosition = 0;
                     break;
             }
-            _menuPosition = 0;
+            break;
+            
+        case SCREEN_LAMP1_SETTINGS:
+        case SCREEN_LAMP2_SETTINGS:
+        case SCREEN_LAMP3_SETTINGS:
+            if (_menuPosition == 3) { // Расписание
+                _currentScreen = SCREEN_LAMP_SCHEDULE;
+                _menuPosition = 0;
+                _lampScheduleEditMode = 0; // начинаем с дней
+                // Загружаем настройки выбранной лампы
+                if (_relay) {
+                    int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS;
+                    ChannelSettings* s = nullptr;
+                    if (lampIndex == 0) s = _relay->getLamp1Settings();
+                    else if (lampIndex == 1) s = _relay->getLamp2Settings();
+                    else if (lampIndex == 2) s = _relay->getLamp3Settings();
+                    
+                    if (s) {
+                        _editLampNumber = lampIndex + 1;
+                        _editLampUseSensor = s->useSensor;
+                        _editLampUseSchedule = s->useSchedule;
+                        _editLampThreshold = s->thresholdLow;
+                        _editLampHysteresis = s->sensorHysteresis;
+                        for (int i = 0; i < 7; i++) {
+                            _editLampScheduleDays[i] = s->scheduleDays[i];
+                        }
+                        _editLampScheduleStartHour = s->scheduleStartHour;
+                        _editLampScheduleStartMin = s->scheduleStartMin;
+                        _editLampScheduleEndHour = s->scheduleEndHour;
+                        _editLampScheduleEndMin = s->scheduleEndMin;
+                    }
+                }
+            } else {
+                // Обработка нажатий в детальном экране лампы
+                if (_relay) {
+                    int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS;
+                    ChannelSettings* s = nullptr;
+                    if (lampIndex == 0) s = _relay->getLamp1Settings();
+                    else if (lampIndex == 1) s = _relay->getLamp2Settings();
+                    else if (lampIndex == 2) s = _relay->getLamp3Settings();
+                    
+                    if (s) {
+                        if (_menuPosition == 0) { // Включить/выключить датчик
+                            _editLampUseSensor = !_editLampUseSensor;
+                            s->useSensor = _editLampUseSensor;
+                        } else if (_menuPosition == 1) { // Порог
+                            // Входим в режим редактирования
+                            _editingActive = true;
+                            _editingIndex = _menuPosition;
+                        } else if (_menuPosition == 2) { // Гистерезис
+                            // Входим в режим редактирования
+                            _editingActive = true;
+                            _editingIndex = _menuPosition;
+                        }
+                    }
+                }
+            }
+            break;
+            
+        case SCREEN_LAMP_SCHEDULE:
+            if (_lampScheduleEditMode == 0 && _menuPosition >= 0 && _menuPosition <= 6) {
+                // Переход к экрану выбора дней недели
+                _currentScreen = SCREEN_LAMP_DAYS;
+                _menuPosition = 0;
+                break;
+            }
+            // Обработка нажатий в расписании
+            if (_lampScheduleEditMode == 0) {
+                // В режиме дней - переключение выбранного дня
+                if (_menuPosition >= 0 && _menuPosition <= 6) {
+                    _editLampScheduleDays[_menuPosition] = !_editLampScheduleDays[_menuPosition];
+                }
+            } else if (_lampScheduleEditMode == 1) {
+                // Редактирование времени начала
+                if (!_editingActive) {
+                    _editingActive = true;
+                    _lampEditTimeMode = false; // начинаем с часов
+                    _editHour = _editLampScheduleStartHour;
+                    _editMinute = _editLampScheduleStartMin;
+                } else {
+                    // Сохраняем и переключаемся между часами/минутами
+                    if (!_lampEditTimeMode) {
+                        // Часы отредактированы, переходим к минутам
+                        _lampEditTimeMode = true;
+                    } else {
+                        // Минуты отредактированы, выходим
+                        _editingActive = false;
+                        _editLampScheduleStartHour = _editHour;
+                        _editLampScheduleStartMin = _editMinute;
+                    }
+                }
+            } else if (_lampScheduleEditMode == 2) {
+                // Редактирование времени конца
+                if (!_editingActive) {
+                    _editingActive = true;
+                    _lampEditTimeMode = false; // начинаем с часов
+                    _editHour = _editLampScheduleEndHour;
+                    _editMinute = _editLampScheduleEndMin;
+                } else {
+                    // Сохраняем и переключаемся между часами/минутами
+                    if (!_lampEditTimeMode) {
+                        // Часы отредактированы, переходим к минутам
+                        _lampEditTimeMode = true;
+                    } else {
+                        // Минуты отредактированы, выходим
+                        _editingActive = false;
+                        _editLampScheduleEndHour = _editHour;
+                        _editLampScheduleEndMin = _editMinute;
+                    }
+                }
+            }
+            break;
+            
+        case SCREEN_LAMP_DAYS:
+            // Переключение дней недели
+            if (_menuPosition >= 0 && _menuPosition <= 6) {
+                _editLampScheduleDays[_menuPosition] = !_editLampScheduleDays[_menuPosition];
+            }
             break;
             
         case SCREEN_CONFIRM:
@@ -450,6 +590,23 @@ void Menu::handleShortPress() {
 }
 
 void Menu::handleLongPress() {
+    // Сохраняем расписание ламп при долгом нажатии в SCREEN_LAMP_SCHEDULE
+    if (_currentScreen == SCREEN_LAMP_SCHEDULE && _relay) {
+        // Преобразуем bool массив в int массив выбранных дней
+        int selectedDays[7];
+        int daysCount = 0;
+        for (int i = 0; i < 7; i++) {
+            if (_editLampScheduleDays[i]) {
+                selectedDays[daysCount++] = i;
+            }
+        }
+        _relay->setLampSchedule(
+            _editLampNumber,
+            _editLampScheduleStartHour, _editLampScheduleStartMin,
+            _editLampScheduleEndHour, _editLampScheduleEndMin,
+            selectedDays, daysCount
+        );
+    }
     // Сохраняем текущее редактируемое значение, если в режиме
     if (_editingActive) {
         if (_relay) {
@@ -584,40 +741,14 @@ void Menu::drawSettingsScreen() {
     u8g2->print("НАСТРОЙКИ");
     
     if (_menuPosition < 0) _menuPosition = 0;
-    if (_menuPosition > 3) _menuPosition = 3;
+    if (_menuPosition > 2) _menuPosition = 2;
     
-    const char* items[] = {"Пороги", "Лампы", "Увлажнитель", "Статистика"};
-    for (int i = 0; i < 4; i++) {
+    const char* items[] = {"Лампы", "Увлажнитель", "Статистика"};
+    for (int i = 0; i < 3; i++) {
         u8g2->setCursor(10, 28 + i * 14);
         u8g2->print(items[i]);
         if (_menuPosition == i) u8g2->print(" <");
     }
-    display.update();
-}
-
-void Menu::drawThresholdsScreen() {
-    display.clear();
-    U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
-    u8g2->setCursor(0, 12);
-    u8g2->print("ПОРОГИ");
-    
-    char buffer[32];
-    snprintf(buffer, sizeof(buffer), "Свет: %d lx", _thresholds.lightThreshold);
-    u8g2->setCursor(10, 28);
-    u8g2->print(buffer);
-    if (_menuPosition == 0) u8g2->print(" <");
-    
-    snprintf(buffer, sizeof(buffer), "Влажн: %d%%", _thresholds.humidityThreshold);
-    u8g2->setCursor(10, 42);
-    u8g2->print(buffer);
-    if (_menuPosition == 1) u8g2->print(" <");
-    
-    snprintf(buffer, sizeof(buffer), "Темп: %.1f°C", _thresholds.tempThreshold);
-    u8g2->setCursor(10, 56);
-    u8g2->print(buffer);
-    if (_menuPosition == 2) u8g2->print(" <");
-    
     display.update();
 }
 
@@ -791,11 +922,112 @@ void Menu::drawLampDetailScreen(int lampNumber) {
     u8g2->setCursor(0, 12);
     u8g2->print(title);
     
-    // Заглушка, будет доработано позже
+    // Пункты меню: 0 - Датчик, 1 - Порог, 2 - Гистерезис, 3 - Расписание
+    const char* items[] = {"Датчик", "Порог", "Гистерезис", "Расписание"};
+    for (int i = 0; i < 4; i++) {
+        u8g2->setCursor(10, 28 + i * 10);
+        u8g2->print(items[i]);
+        if (_menuPosition == i) u8g2->print(" <");
+        
+        // Отображаем значения
+        if (i == 0) {
+            u8g2->setCursor(80, 28);
+            u8g2->print(_editLampUseSensor ? "ON" : "OFF");
+        } else if (i == 1) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%d lx", _editLampThreshold);
+            u8g2->setCursor(80, 38);
+            u8g2->print(buf);
+        } else if (i == 2) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%d", _editLampHysteresis);
+            u8g2->setCursor(80, 48);
+            u8g2->print(buf);
+        }
+    }
+    
+    // Индикатор редактирования
+    if (_editingActive && (_menuPosition == 1 || _menuPosition == 2)) {
+        u8g2->setCursor(0, 62);
+        u8g2->print("Редактирование...");
+    }
+    
+    display.update();
+}
+
+void Menu::drawLampScheduleScreen(int lampNumber) {
+    display.clear();
+    U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
+    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
+    
+    char title[32];
+    snprintf(title, sizeof(title), "ЛАМПА %d РАСПИСАНИЕ", lampNumber);
+    u8g2->setCursor(0, 12);
+    u8g2->print(title);
+    
+    // Пункты меню: 0 - Дни недели, 1 - Время начала, 2 - Время конца
+    const char* items[] = {"Дни недели", "Начало", "Конец"};
+    for (int i = 0; i < 3; i++) {
+        u8g2->setCursor(10, 28 + i * 14);
+        u8g2->print(items[i]);
+        if (_menuPosition == i) u8g2->print(" <");
+    }
+    
+    // Отображаем текущие значения
+    u8g2->setFont(u8g2_font_5x8_t_cyrillic);
     u8g2->setCursor(0, 35);
-    u8g2->print("Режим: AUTO");
-    u8g2->setCursor(0, 50);
-    u8g2->print("Порог: 200 lx");
+    if (_lampScheduleEditMode == 0) {
+        u8g2->print("Нажмите для выбора");
+    } else if (_lampScheduleEditMode == 1) {
+        if (_editingActive) {
+            if (_lampEditTimeMode) {
+                snprintf(title, sizeof(title), "Часы: %02d", _editHour);
+            } else {
+                snprintf(title, sizeof(title), "Минуты: %02d", _editMinute);
+            }
+        } else {
+            snprintf(title, sizeof(title), "%02d:%02d", _editLampScheduleStartHour, _editLampScheduleStartMin);
+        }
+        u8g2->setCursor(70, 35);
+        u8g2->print(title);
+    } else if (_lampScheduleEditMode == 2) {
+        if (_editingActive) {
+            if (_lampEditTimeMode) {
+                snprintf(title, sizeof(title), "Часы: %02d", _editHour);
+            } else {
+                snprintf(title, sizeof(title), "Минуты: %02d", _editMinute);
+            }
+        } else {
+            snprintf(title, sizeof(title), "%02d:%02d", _editLampScheduleEndHour, _editLampScheduleEndMin);
+        }
+        u8g2->setCursor(70, 35);
+        u8g2->print(title);
+    }
+    
+    display.update();
+}
+
+void Menu::drawLampDaysScreen() {
+    display.clear();
+    U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
+    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
+    u8g2->setCursor(0, 12);
+    u8g2->print("ДНИ НЕДЕЛИ");
+    
+    const char* days[] = {"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"};
+    for (int i = 0; i < 7; i++) {
+        u8g2->setCursor(10 + i * 16, 35);
+        u8g2->print(days[i]);
+        if (_editLampScheduleDays[i]) {
+            u8g2->setCursor(10 + i * 16, 50);
+            u8g2->print("[X]");
+        }
+        // Убираем рамку - не все методы U8G2_FOR_ADAFRUIT_GFX поддерживают drawFrame
+    }
+    
+    u8g2->setFont(u8g2_font_5x8_t_cyrillic);
+    u8g2->setCursor(0, 62);
+    u8g2->print("Кнопка: назад");
     
     display.update();
 }

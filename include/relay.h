@@ -70,6 +70,7 @@ public:
     ChannelSettings* getLamp2Settings() { return &_lamp2Settings; }
     ChannelSettings* getLamp3Settings() { return &_lamp3Settings; }
     GlobalSettings* getGlobalSettings() { return &_globalSettings; }
+    void setLampSchedule(int lamp, int startH, int startM, int endH, int endM, int* days, int daysCount);
 };
 
 #endif
