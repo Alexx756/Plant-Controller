@@ -160,6 +160,7 @@ LampScheduleEditor::LampScheduleEditor() {
     _editTimeMode = false;
     _editHour = 0;
     _editMinute = 0;
+    _editing = false;
 }
 
 void LampScheduleEditor::begin(ScheduleManager* sched) {
@@ -188,6 +189,7 @@ void LampScheduleEditor::startEditing(int lampNumber, bool useSensor, bool useSc
     _editTimeMode = false;
     _editHour = _scheduleStartHour;
     _editMinute = _scheduleStartMin;
+    _editing = false;
 }
 
 void LampScheduleEditor::navigate(int delta) {
@@ -196,27 +198,47 @@ void LampScheduleEditor::navigate(int delta) {
         // Здесь ничего не делаем
     } else if (_editMode == 1) {
         // Редактирование времени начала
-        if (!_editTimeMode) {
-            // Редактируем часы
-            _editHour += delta;
-            if (_editHour < 0) _editHour = 23;
-            if (_editHour > 23) _editHour = 0;
-        } else {
-            // Редактируем минуты
-            _editMinute += delta;
-            if (_editMinute < 0) _editMinute = 59;
-            if (_editMinute > 59) _editMinute = 0;
+        if (_editing) {
+            if (!_editTimeMode) {
+                // Редактируем часы
+                _editHour += delta;
+                if (_editHour < 0) _editHour = 23;
+                if (_editHour > 23) _editHour = 0;
+            } else {
+                // Редактируем минуты
+                _editMinute += delta;
+                if (_editMinute < 0) _editMinute = 59;
+                if (_editMinute > 59) _editMinute = 0;
+            }
         }
     } else if (_editMode == 2) {
         // Редактирование времени конца
-        if (!_editTimeMode) {
-            _editHour += delta;
-            if (_editHour < 0) _editHour = 23;
-            if (_editHour > 23) _editHour = 0;
-        } else {
-            _editMinute += delta;
-            if (_editMinute < 0) _editMinute = 59;
-            if (_editMinute > 59) _editMinute = 0;
+        if (_editing) {
+            if (!_editTimeMode) {
+                _editHour += delta;
+                if (_editHour < 0) _editHour = 23;
+                if (_editHour > 23) _editHour = 0;
+            } else {
+                _editMinute += delta;
+                if (_editMinute < 0) _editMinute = 59;
+                if (_editMinute > 59) _editMinute = 0;
+            }
+        }
+    }
+}
+
+void LampScheduleEditor::setEditMode(int mode) {
+    if (mode >= 0 && mode <= 2) {
+        _editMode = mode;
+        _editing = false;
+        _editTimeMode = false;
+        // Инициализируем editHour/editMinute текущими значениями
+        if (mode == 1) {
+            _editHour = _scheduleStartHour;
+            _editMinute = _scheduleStartMin;
+        } else if (mode == 2) {
+            _editHour = _scheduleEndHour;
+            _editMinute = _scheduleEndMin;
         }
     }
 }
@@ -227,16 +249,16 @@ void LampScheduleEditor::switchEditMode() {
     } else {
         _editMode = 0;
     }
+    _editing = false;
+    _editTimeMode = false;
     
     // При переключении на редактирование времени, инициализируем editHour/editMinute
     if (_editMode == 1) {
         _editHour = _scheduleStartHour;
         _editMinute = _scheduleStartMin;
-        _editTimeMode = false;
     } else if (_editMode == 2) {
         _editHour = _scheduleEndHour;
         _editMinute = _scheduleEndMin;
-        _editTimeMode = false;
     }
 }
 
@@ -244,6 +266,35 @@ void LampScheduleEditor::toggleDay(int dayIndex) {
     if (dayIndex >= 0 && dayIndex < 7) {
         _scheduleDays[dayIndex] = !_scheduleDays[dayIndex];
     }
+}
+
+void LampScheduleEditor::startEditingTime() {
+    _editing = true;
+    _editTimeMode = false;  // начинаем с часов
+    // Устанавливаем текущие значения
+    if (_editMode == 1) {
+        _editHour = _scheduleStartHour;
+        _editMinute = _scheduleStartMin;
+    } else if (_editMode == 2) {
+        _editHour = _scheduleEndHour;
+        _editMinute = _scheduleEndMin;
+    }
+}
+
+void LampScheduleEditor::toggleTimeUnit() {
+    _editTimeMode = !_editTimeMode;
+}
+
+void LampScheduleEditor::saveAndExit() {
+    // Сохраняем отредактированные времена
+    if (_editMode == 1) {
+        _scheduleStartHour = _editHour;
+        _scheduleStartMin = _editMinute;
+    } else if (_editMode == 2) {
+        _scheduleEndHour = _editHour;
+        _scheduleEndMin = _editMinute;
+    }
+    _editing = false;
 }
 
 void LampScheduleEditor::editTime(int delta) {
@@ -277,13 +328,15 @@ void LampScheduleEditor::changeHysteresis(int delta) {
 void LampScheduleEditor::saveToSchedule() {
     if (_schedManager == nullptr) return;
     
-    // Сохраняем отредактированные времена
-    if (_editMode == 1) {
-        _scheduleStartHour = _editHour;
-        _scheduleStartMin = _editMinute;
-    } else if (_editMode == 2) {
-        _scheduleEndHour = _editHour;
-        _scheduleEndMin = _editMinute;
+    // Сохраняем отредактированные времена (на случай, если редактирование не было завершено)
+    if (_editing) {
+        if (_editMode == 1) {
+            _scheduleStartHour = _editHour;
+            _scheduleStartMin = _editMinute;
+        } else if (_editMode == 2) {
+            _scheduleEndHour = _editHour;
+            _scheduleEndMin = _editMinute;
+        }
     }
     
     // Преобразуем bool массив в int массив выбранных дней

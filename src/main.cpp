@@ -16,6 +16,7 @@ RelayController relays;
 Menu menu;
 TimeManager timeManager;
 ScheduleManager scheduler;
+LampScheduleEditor lampEditor;  // <-- ДОБАВЛЕНО
 
 // ============ ПЕРЕМЕННЫЕ ============
 SensorData sensorData;
@@ -95,6 +96,7 @@ void setup() {
     menu.begin();
     menu.setScheduler(&scheduler);
     menu.setRelayController(&relays);
+    menu.setLampEditor(&lampEditor);  // <-- ДОБАВЛЕНО
     logger.log("МЕНЮ", "✅ Инициализировано");
     
     // Подключаемся к Wi-Fi
@@ -123,6 +125,9 @@ void setup() {
     scheduler.begin();
 
     relays.setScheduleManager(&scheduler);
+    
+    // Инициализация редактора ламп
+    lampEditor.begin(&scheduler);  // <-- ДОБАВЛЕНО
     
     // Статистика
     initStats();

@@ -82,6 +82,7 @@ public:
     
     // Настройки ламп
     void setLampUseSensor(int lamp, bool enable);
+    void setLampUseSchedule(int lamp, bool enable);
     void setLampThreshold(int lamp, int low, int hysteresis);
     void setLampHysteresis(int lamp, int hysteresis);
 };

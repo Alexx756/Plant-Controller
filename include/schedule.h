@@ -82,6 +82,7 @@ private:
     bool _editTimeMode;                 // false=часы, true=минуты
     int _editHour;                      // редактируемый час
     int _editMinute;                    // редактируемая минута
+    bool _editing;                      // флаг: находимся в режиме редактирования значения
     
     ScheduleManager* _schedManager;     // указатель на планировщик
     
@@ -97,12 +98,16 @@ public:
     
     // Навигация
     void navigate(int delta);
+    void setEditMode(int mode);  // установка режима редактирования (0=дни, 1=начало, 2=конец)
     void switchEditMode();  // переключение между режимами редактирования
     void toggleDay(int dayIndex);  // переключение дня недели
     
     // Редактирование времени
+    void startEditingTime();  // вход в режим редактирования времени (часы)
+    void toggleTimeUnit();    // переключение между часами/минутами
+    void saveAndExit();       // сохранение и выход из режима редактирования
     void editTime(int delta);
-    void toggleTimeMode();  // переключение между часами/минутами
+    void toggleTimeMode();  // переключение между часами/минутами (устарело, оставить для совместимости)
     
     // Изменение значений
     void toggleUseSensor();
@@ -128,7 +133,7 @@ public:
     bool getEditTimeMode() const { return _editTimeMode; }
     int getEditHour() const { return _editHour; }
     int getEditMinute() const { return _editMinute; }
-    bool isEditing() const { return _editMode > 0 || _editTimeMode; }
+    bool isEditing() const { return _editing; }
 };
 
 #endif

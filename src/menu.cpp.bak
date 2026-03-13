@@ -536,11 +536,6 @@ void Menu::handleLongPress() {
     // Сохраняем расписание ламп через редактор
     if (_currentScreen == SCREEN_LAMP_SCHEDULE && _lampEditor) {
         _lampEditor->saveToSchedule();
-        // Устанавливаем useSchedule = true в настройках лампы
-        if (_relay) {
-            int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS + 1;
-            _relay->setLampUseSchedule(lampIndex, true);
-        }
     }
     
     // Сохраняем текущее редактируемое значение, если в режиме

@@ -198,6 +198,7 @@ bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorV
         case CH_MODE_ON:
             return true;
         case CH_MODE_SENSOR:
+            if (!settings.useSensor) return false;
             return checkSensor(settings, sensorValue, currentState);
         case CH_MODE_SCHEDULE:
             if (_schedManager == nullptr) return false;
@@ -207,6 +208,7 @@ bool RelayController::shouldChannelBeOn(ChannelSettings& settings, float sensorV
                 return _schedManager->isLampScheduled(settings.index, hour, min, day);
             }
         case CH_MODE_SENSOR_SCHEDULE:
+            if (!settings.useSensor) return false;
             if (_schedManager == nullptr) return false;
             {
                 bool sensorPart = checkSensor(settings, sensorValue, currentState);
@@ -353,6 +355,19 @@ void RelayController::setLampUseSensor(int lamp, bool enable) {
     }
     settings->useSensor = enable;
     logger.logf("РЕЛЕ", "Лампа %d useSensor = %d", lamp, enable);
+    saveSettingsToNVS();
+}
+
+void RelayController::setLampUseSchedule(int lamp, bool enable) {
+    ChannelSettings* settings = nullptr;
+    switch(lamp) {
+        case 1: settings = &_lamp1Settings; break;
+        case 2: settings = &_lamp2Settings; break;
+        case 3: settings = &_lamp3Settings; break;
+        default: return;
+    }
+    settings->useSchedule = enable;
+    logger.logf("РЕЛЕ", "Лампа %d useSchedule = %d", lamp, enable);
     saveSettingsToNVS();
 }
 
