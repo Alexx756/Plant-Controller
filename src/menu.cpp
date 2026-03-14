@@ -239,9 +239,23 @@ void Menu::handleEncoderRotation(int delta) {
         case SCREEN_LAMP1_SETTINGS:
         case SCREEN_LAMP2_SETTINGS:
         case SCREEN_LAMP3_SETTINGS:
-            _menuPosition += delta;
-            if (_menuPosition < 0) _menuPosition = 3;
-            if (_menuPosition > 3) _menuPosition = 0;
+            if (_editingActive && (_menuPosition == 1 || _menuPosition == 2)) {
+                // Режим редактирования: меняем значение порога или гистерезиса
+                if (_menuPosition == 1) { // Порог
+                    _editHumidifierValue += delta * 10;
+                    if (_editHumidifierValue < 0) _editHumidifierValue = 0;
+                    if (_editHumidifierValue > 1000) _editHumidifierValue = 1000;
+                } else if (_menuPosition == 2) { // Гистерезис
+                    _editHumidifierValue2 += delta * 10;
+                    if (_editHumidifierValue2 < 0) _editHumidifierValue2 = 0;
+                    if (_editHumidifierValue2 > 100) _editHumidifierValue2 = 100;
+                }
+            } else {
+                // Навигация по меню
+                _menuPosition += delta;
+                if (_menuPosition < 0) _menuPosition = 3;
+                if (_menuPosition > 3) _menuPosition = 0;
+            }
             break;
             
         case SCREEN_LAMP_SCHEDULE:
@@ -435,6 +449,21 @@ void Menu::handleShortPress() {
         case SCREEN_LAMP1_SETTINGS:
         case SCREEN_LAMP2_SETTINGS:
         case SCREEN_LAMP3_SETTINGS:
+            // Если в режиме редактирования порога/гистерезиса - сохраняем и выходим из режима
+            if (_editingActive && (_menuPosition == 1 || _menuPosition == 2)) {
+                if (_relay) {
+                    int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS + 1;
+                    if (_editingIndex == 1) { // Порог
+                        _relay->setLampThreshold(lampIndex, _editHumidifierValue, _editHumidifierValue2);
+                    } else if (_editingIndex == 2) { // Гистерезис
+                        _relay->setLampHysteresis(lampIndex, _editHumidifierValue2);
+                    }
+                }
+                _editingActive = false;
+                // Остаемся на том же экране, выходим из switch
+                break;
+            }
+            
             if (_menuPosition == 3) { // Расписание
                 _currentScreen = SCREEN_LAMP_SCHEDULE;
                 _menuPosition = 0;
@@ -873,12 +902,11 @@ void Menu::drawLampDetailScreen(int lampNumber) {
         u8g2->print(items[i]);
         if (_menuPosition == i) u8g2->print(" <");
         
-        // Отображаем значения из LampScheduleEditor или из Relay
+        // Отображаем значения из Relay (актуальные) или из временных переменных редактирования
         if (i == 0) {
+            // useSensor - всегда берем из Relay
             bool useSensor = false;
-            if (_lampEditor) {
-                useSensor = _lampEditor->getUseSensor();
-            } else if (_relay) {
+            if (_relay) {
                 int lampIndex = lampNumber - 1;
                 if (lampIndex == 0) useSensor = _relay->getLamp1Settings()->useSensor;
                 else if (lampIndex == 1) useSensor = _relay->getLamp2Settings()->useSensor;
@@ -887,9 +915,10 @@ void Menu::drawLampDetailScreen(int lampNumber) {
             u8g2->setCursor(80, 28);
             u8g2->print(useSensor ? "ON" : "OFF");
         } else if (i == 1) {
+            // thresholdLow
             int threshold = 0;
-            if (_lampEditor) {
-                threshold = _lampEditor->getThreshold();
+            if (_editingActive && _editingIndex == 1) {
+                threshold = _editHumidifierValue;
             } else if (_relay) {
                 int lampIndex = lampNumber - 1;
                 if (lampIndex == 0) threshold = _relay->getLamp1Settings()->thresholdLow;
@@ -901,9 +930,10 @@ void Menu::drawLampDetailScreen(int lampNumber) {
             u8g2->setCursor(80, 38);
             u8g2->print(buf);
         } else if (i == 2) {
+            // hysteresis
             int hysteresis = 0;
-            if (_lampEditor) {
-                hysteresis = _lampEditor->getHysteresis();
+            if (_editingActive && _editingIndex == 2) {
+                hysteresis = _editHumidifierValue2;
             } else if (_relay) {
                 int lampIndex = lampNumber - 1;
                 if (lampIndex == 0) hysteresis = _relay->getLamp1Settings()->sensorHysteresis;
