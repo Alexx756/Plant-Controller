@@ -31,7 +31,8 @@ bool ScheduleManager::checkSchedule(ScheduleItem& sched, int currentHour, int cu
     if (!sched.enabled) return false;
     
     // Проверка дня недели
-    bool dayOk = (sched.daysCount == 0);  // если дни не указаны - любой день
+    // Если дни не выбраны (daysCount == 0), расписание не работает
+    bool dayOk = false;
     for (int i = 0; i < sched.daysCount; i++) {
         if (sched.days[i] == currentDay) {
             dayOk = true;
@@ -156,11 +157,10 @@ bool ScheduleManager::isHumidifierScheduled(int hour, int min, int day) {
 
 LampScheduleEditor::LampScheduleEditor() {
     _schedManager = nullptr;
-    _editMode = 0;
-    _editTimeMode = false;
+    _editMode = 0;  // 0=дни, 1=начало, 2=конец
+    _activeField = -1;  // -1 = нет активного поля, 0 = часы, 1 = минуты
     _editHour = 0;
     _editMinute = 0;
-    _editing = false;
 }
 
 void LampScheduleEditor::begin(ScheduleManager* sched) {
@@ -186,43 +186,31 @@ void LampScheduleEditor::startEditing(int lampNumber, bool useSensor, bool useSc
     }
     
     _editMode = 0;  // начинаем с дней
-    _editTimeMode = false;
-    _editHour = _scheduleStartHour;
-    _editMinute = _scheduleStartMin;
-    _editing = false;
+    _activeField = -1;  // не редактируем время
 }
 
 void LampScheduleEditor::navigate(int delta) {
-    if (_editMode == 0) {
-        // Навигация по дням недели (управляется из menu.cpp через toggleDay)
-        // Здесь ничего не делаем
-    } else if (_editMode == 1) {
-        // Редактирование времени начала
-        if (_editing) {
-            if (!_editTimeMode) {
-                // Редактируем часы
-                _editHour += delta;
-                if (_editHour < 0) _editHour = 23;
-                if (_editHour > 23) _editHour = 0;
-            } else {
-                // Редактируем минуты
-                _editMinute += delta;
-                if (_editMinute < 0) _editMinute = 59;
-                if (_editMinute > 59) _editMinute = 0;
-            }
+    if (_activeField == 0) {
+        // Редактируем часы
+        if (_editMode == 1) {
+            _editHour += delta;
+            if (_editHour < 0) _editHour = 23;
+            if (_editHour > 23) _editHour = 0;
+        } else if (_editMode == 2) {
+            _editHour += delta;
+            if (_editHour < 0) _editHour = 23;
+            if (_editHour > 23) _editHour = 0;
         }
-    } else if (_editMode == 2) {
-        // Редактирование времени конца
-        if (_editing) {
-            if (!_editTimeMode) {
-                _editHour += delta;
-                if (_editHour < 0) _editHour = 23;
-                if (_editHour > 23) _editHour = 0;
-            } else {
-                _editMinute += delta;
-                if (_editMinute < 0) _editMinute = 59;
-                if (_editMinute > 59) _editMinute = 0;
-            }
+    } else if (_activeField == 1) {
+        // Редактируем минуты
+        if (_editMode == 1) {
+            _editMinute += delta;
+            if (_editMinute < 0) _editMinute = 59;
+            if (_editMinute > 59) _editMinute = 0;
+        } else if (_editMode == 2) {
+            _editMinute += delta;
+            if (_editMinute < 0) _editMinute = 59;
+            if (_editMinute > 59) _editMinute = 0;
         }
     }
 }
@@ -230,8 +218,7 @@ void LampScheduleEditor::navigate(int delta) {
 void LampScheduleEditor::setEditMode(int mode) {
     if (mode >= 0 && mode <= 2) {
         _editMode = mode;
-        _editing = false;
-        _editTimeMode = false;
+        _activeField = -1;  // сбрасываем активное поле
         // Инициализируем editHour/editMinute текущими значениями
         if (mode == 1) {
             _editHour = _scheduleStartHour;
@@ -249,8 +236,7 @@ void LampScheduleEditor::switchEditMode() {
     } else {
         _editMode = 0;
     }
-    _editing = false;
-    _editTimeMode = false;
+    _activeField = -1;
     
     // При переключении на редактирование времени, инициализируем editHour/editMinute
     if (_editMode == 1) {
@@ -269,8 +255,7 @@ void LampScheduleEditor::toggleDay(int dayIndex) {
 }
 
 void LampScheduleEditor::startEditingTime() {
-    _editing = true;
-    _editTimeMode = false;  // начинаем с часов
+    _activeField = 0;  // начинаем с часов
     // Устанавливаем текущие значения
     if (_editMode == 1) {
         _editHour = _scheduleStartHour;
@@ -282,7 +267,11 @@ void LampScheduleEditor::startEditingTime() {
 }
 
 void LampScheduleEditor::toggleTimeUnit() {
-    _editTimeMode = !_editTimeMode;
+    if (_activeField == 0) {
+        _activeField = 1;
+    } else if (_activeField == 1) {
+        _activeField = -1;  // выход из редактирования с сохранением
+    }
 }
 
 void LampScheduleEditor::saveAndExit() {
@@ -294,7 +283,7 @@ void LampScheduleEditor::saveAndExit() {
         _scheduleEndHour = _editHour;
         _scheduleEndMin = _editMinute;
     }
-    _editing = false;
+    _activeField = -1;
 }
 
 void LampScheduleEditor::editTime(int delta) {
@@ -302,7 +291,11 @@ void LampScheduleEditor::editTime(int delta) {
 }
 
 void LampScheduleEditor::toggleTimeMode() {
-    _editTimeMode = !_editTimeMode;
+    if (_activeField == 0) {
+        _activeField = 1;
+    } else if (_activeField == 1) {
+        _activeField = -1;
+    }
 }
 
 void LampScheduleEditor::toggleUseSensor() {
@@ -329,7 +322,7 @@ void LampScheduleEditor::saveToSchedule() {
     if (_schedManager == nullptr) return;
     
     // Сохраняем отредактированные времена (на случай, если редактирование не было завершено)
-    if (_editing) {
+    if (_activeField >= 0) {
         if (_editMode == 1) {
             _scheduleStartHour = _editHour;
             _scheduleStartMin = _editMinute;

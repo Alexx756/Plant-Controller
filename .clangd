@@ -15,6 +15,12 @@ CompileFlags:
     # 3. Системные инклуды тулчейна (пути к gcc 12.2.0)
     "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include",
     "-isystem/config/.platformio/packages/toolchain-xtensa-esp32s3/lib/gcc/xtensa-esp32s3-elf/12.2.0/include",
+
+     # ПУТЬ К ПРЕФЕРЕНЦИЯМ И ДРУГИМ СИСТЕМНЫМ ЛИБАМ ARDUINO:
+    "-isystem/config/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src",
+    "-isystem/config/.platformio/packages/framework-arduinoespressif32/cores/esp32",
+    "-isystem/config/.platformio/packages/framework-arduinoespressif32/variants/esp32s3",
+    
    
     # 4. Исправляем конфликт ssize_t
     "-D__ssize_t_defined",

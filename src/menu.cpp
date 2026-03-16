@@ -61,10 +61,13 @@ void Menu::begin() {
     _encoder = new AiEsp32RotaryEncoder(ENCODER_DT, ENCODER_CLK, ENCODER_SW, -1, 4);
     _encoder->begin();
     _encoder->setup(readEncoderISR);
-    _encoder->setAcceleration(0);
-    _encoder->disableAcceleration();
     
-    Serial.println("✅ Энкодер инициализирован");
+    // Настройка ускорения энкодера
+ 
+    _encoder->setAcceleration(150);
+
+    
+    Serial.println("✅ Энкодер инициализирован с ускорением");
     
     // Для отладки можно раскомментировать, но в рабочей версии лучше убрать
     // testEncoder();
@@ -84,11 +87,16 @@ void Menu::update(float temp, float hum, float dsTemp, float light, RelayState r
     long currentValue = _encoder->readEncoder();
     
     if (currentValue != lastValue) {
-        int delta = (currentValue > lastValue) ? 1 : -1;
+        // Вычисляем реальную дельту с учетом ускорения
+        int delta = (int)(currentValue - lastValue);
+        // Ограничиваем дельту для безопасности (максимум 10 за один вызов)
+        if (delta > 10) delta = 10;
+        if (delta < -10) delta = -10;
+        
         if (delta != 0) {
             logger.logEncoder(delta, _menuPosition);
+            handleEncoderRotation(delta);
         }
-        handleEncoderRotation(delta);
         lastValue = currentValue;
     }
     
@@ -259,11 +267,11 @@ void Menu::handleEncoderRotation(int delta) {
             break;
             
         case SCREEN_LAMP_SCHEDULE:
-            // Навигация в расписании через редактор
-            if (_lampEditor) {
+            // Если редактор в режиме редактирования времени, передаём навигацию
+            if (_lampEditor && _lampEditor->isEditing()) {
                 _lampEditor->navigate(delta);
             } else {
-                // Fallback на старую логику (если редактор не инициализирован)
+                // Иначе навигация по меню (0-дни, 1-начало, 2-конец)
                 _menuPosition += delta;
                 if (_menuPosition < 0) _menuPosition = 2;
                 if (_menuPosition > 2) _menuPosition = 0;
@@ -271,14 +279,10 @@ void Menu::handleEncoderRotation(int delta) {
             break;
             
         case SCREEN_LAMP_DAYS:
-            // Навигация по дням недели через редактор
-            if (_lampEditor) {
-                _lampEditor->navigate(delta);
-            } else {
-                _menuPosition += delta;
-                if (_menuPosition < 0) _menuPosition = 6;
-                if (_menuPosition > 6) _menuPosition = 0;
-            }
+            // Прямая навигация по дням недели (0-6) для выбора текущего дня
+            _menuPosition += delta;
+            if (_menuPosition < 0) _menuPosition = 6;
+            if (_menuPosition > 6) _menuPosition = 0;
             break;
             
         default:
@@ -529,15 +533,23 @@ void Menu::handleShortPress() {
                     _currentScreen = SCREEN_LAMP_DAYS;
                     _menuPosition = 0;
                     break;
-                } else if (_menuPosition == 1) {
-                    // Переход к редактированию времени начала
-                    if (_lampEditor->getEditMode() != 1) {
-                        _lampEditor->switchEditMode(); // переключаем на режим 1
-                    }
-                } else if (_menuPosition == 2) {
-                    // Переход к редактированию времени конца
-                    if (_lampEditor->getEditMode() != 2) {
-                        _lampEditor->switchEditMode(); // переключаем на режим 2
+                } else if (_menuPosition == 1 || _menuPosition == 2) {
+                    // Редактирование времени
+                    if (!_lampEditor->isEditing()) {
+                        // Первое нажатие: активировать редактирование часов
+                        _lampEditor->setEditMode(_menuPosition == 1 ? 1 : 2);
+                        _lampEditor->startEditingTime();
+                        // _activeField = 0 (часы) устанавливается в startEditingTime()
+                    } else {
+                        // Уже в режиме редактирования
+                        int activeField = _lampEditor->getActiveField();
+                        if (activeField == 0) {
+                            // Были в часах, переключаем на минуты
+                            _lampEditor->toggleTimeUnit();
+                        } else if (activeField == 1) {
+                            // Были в минутах, сохраняем и выходим
+                            _lampEditor->saveAndExit();
+                        }
                     }
                 }
             }
@@ -562,16 +574,27 @@ void Menu::handleShortPress() {
 }
 
 void Menu::handleLongPress() {
-    // Сохраняем расписание ламп через редактор
+    // Длительное нажатие в SCREEN_LAMP_DAYS: сохраняем дни и возвращаемся в SCREEN_LAMP_SCHEDULE
+    if (_currentScreen == SCREEN_LAMP_DAYS && _lampEditor) {
+        _lampEditor->saveToSchedule();
+        _currentScreen = SCREEN_LAMP_SCHEDULE;
+        _menuPosition = 0;
+        return;
+    }
+
+    // Сохраняем расписание ламп через редактор и возвращаемся в настройки лампы
     if (_currentScreen == SCREEN_LAMP_SCHEDULE && _lampEditor) {
         _lampEditor->saveToSchedule();
-        // Устанавливаем useSchedule = true в настройках лампы
         if (_relay) {
-            int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS + 1;
-            _relay->setLampUseSchedule(lampIndex, true);
+            int lampNumber = _lampEditor->getLampNumber();
+            _relay->setLampUseSchedule(lampNumber, true);
         }
+        // Возвращаемся в экран настроек соответствующей лампы (пункт "Расписание")
+        _currentScreen = static_cast<ScreenType>(SCREEN_LAMP1_SETTINGS + _lampEditor->getLampNumber() - 1);
+        _menuPosition = 3;
+        return;
     }
-    
+
     // Сохраняем текущее редактируемое значение, если в режиме
     if (_editingActive) {
         if (_relay) {
@@ -947,22 +970,27 @@ void Menu::drawLampDetailScreen(int lampNumber) {
         }
     }
     
-    // Индикатор редактирования
-    if (_editingActive && (_menuPosition == 1 || _menuPosition == 2)) {
-        u8g2->setCursor(0, 62);
-        u8g2->print("Редактирование...");
-    }
-    
     display.update();
 }
 
 void Menu::drawLampScheduleScreen(int lampNumber) {
     display.clear();
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
+    
+    if (!_lampEditor) {
+        u8g2->setFont(u8g2_font_6x13_t_cyrillic);
+        u8g2->setCursor(0, 12);
+        u8g2->print("Ошибка: редактор не инициализирован");
+        display.update();
+        return;
+    }
+    
+    // Используем номер лампы из редактора (правильный 1-3)
+    int actualLampNumber = _lampEditor->getLampNumber();
     
     char title[32];
-    snprintf(title, sizeof(title), "ЛАМПА %d РАСПИСАНИЕ", lampNumber);
+    snprintf(title, sizeof(title), "ЛАМПА %d РАСПИСАНИЕ", actualLampNumber);
+    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print(title);
     
@@ -974,46 +1002,47 @@ void Menu::drawLampScheduleScreen(int lampNumber) {
         if (_menuPosition == i) u8g2->print(" <");
     }
     
-    // Отображаем текущие значения из LampScheduleEditor
+    // Статус расписания (включено/выключено)
     u8g2->setFont(u8g2_font_5x8_t_cyrillic);
     u8g2->setCursor(0, 35);
+    u8g2->print(_lampEditor->getUseSchedule() ? "Статус: ВКЛ" : "Статус: ВЫКЛ");
     
-    if (!_lampEditor) {
-        u8g2->print("Ошибка: редактор не инициализирован");
-        display.update();
-        return;
-    }
-    
+    // Отображаем времена с выделением активного поля
+    char timeStr[32];
+    int activeField = _lampEditor->getActiveField();
     int editMode = _lampEditor->getEditMode();
-    if (editMode == 0) {
-        u8g2->print("Нажмите для выбора");
-    } else if (editMode == 1) {
-        if (_lampEditor->isEditing()) {
-            if (_lampEditor->getEditTimeMode()) {
-                snprintf(title, sizeof(title), "Часы: %02d", _lampEditor->getEditHour());
-            } else {
-                snprintf(title, sizeof(title), "Минуты: %02d", _lampEditor->getEditMinute());
-            }
+    
+    // Время начала
+    if (editMode == 1 && activeField >= 0) {
+        if (activeField == 0) {
+            snprintf(timeStr, sizeof(timeStr), "Нач: *%02d:%02d", 
+                     _lampEditor->getEditHour(), _lampEditor->getScheduleStartMin());
         } else {
-            snprintf(title, sizeof(title), "%02d:%02d", 
-                     _lampEditor->getScheduleStartHour(), _lampEditor->getScheduleStartMin());
+            snprintf(timeStr, sizeof(timeStr), "Нач: %02d:*%02d", 
+                     _lampEditor->getScheduleStartHour(), _lampEditor->getEditMinute());
         }
-        u8g2->setCursor(70, 35);
-        u8g2->print(title);
-    } else if (editMode == 2) {
-        if (_lampEditor->isEditing()) {
-            if (_lampEditor->getEditTimeMode()) {
-                snprintf(title, sizeof(title), "Часы: %02d", _lampEditor->getEditHour());
-            } else {
-                snprintf(title, sizeof(title), "Минуты: %02d", _lampEditor->getEditMinute());
-            }
-        } else {
-            snprintf(title, sizeof(title), "%02d:%02d", 
-                     _lampEditor->getScheduleEndHour(), _lampEditor->getScheduleEndMin());
-        }
-        u8g2->setCursor(70, 35);
-        u8g2->print(title);
+    } else {
+        snprintf(timeStr, sizeof(timeStr), "Нач: %02d:%02d", 
+                 _lampEditor->getScheduleStartHour(), _lampEditor->getScheduleStartMin());
     }
+    u8g2->setCursor(0, 48);
+    u8g2->print(timeStr);
+    
+    // Время конца
+    if (editMode == 2 && activeField >= 0) {
+        if (activeField == 0) {
+            snprintf(timeStr, sizeof(timeStr), "Кон:  *%02d:%02d", 
+                     _lampEditor->getEditHour(), _lampEditor->getScheduleEndMin());
+        } else {
+            snprintf(timeStr, sizeof(timeStr), "Кон:  %02d:*%02d", 
+                     _lampEditor->getScheduleEndHour(), _lampEditor->getEditMinute());
+        }
+    } else {
+        snprintf(timeStr, sizeof(timeStr), "Кон:  %02d:%02d", 
+                 _lampEditor->getScheduleEndHour(), _lampEditor->getScheduleEndMin());
+    }
+    u8g2->setCursor(0, 58);
+    u8g2->print(timeStr);
     
     display.update();
 }
@@ -1027,32 +1056,30 @@ void Menu::drawLampDaysScreen() {
     
     const char* days[] = {"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"};
     
-    // Используем данные из LampScheduleEditor если доступен
-    bool* daysArray = nullptr;
-    if (_lampEditor) {
-        // Получаем указатель на массив дней из редактора (временные данные)
-        // Так как геттер возвращает по значению, создадим временный массив
-        static bool tempDays[7];
-        for (int i = 0; i < 7; i++) {
-            tempDays[i] = _lampEditor->getScheduleDay(i);
-        }
-        daysArray = tempDays;
-    } else {
-        daysArray = _editLampScheduleDays;  // fallback на старые переменные
+    if (!_lampEditor) {
+        u8g2->setFont(u8g2_font_5x8_t_cyrillic);
+        u8g2->setCursor(0, 35);
+        u8g2->print("Ошибка: редактор не инициализирован");
+        display.update();
+        return;
     }
     
+    // Показываем дни в одну строку с индикацией выбранного дня
+    u8g2->setFont(u8g2_font_5x8_t_cyrillic);
     for (int i = 0; i < 7; i++) {
-        u8g2->setCursor(10 + i * 16, 35);
+        u8g2->setCursor(10 + i * 17, 35);
+        if (_menuPosition == i) {
+            u8g2->print(">");  // индикатор выбранного дня
+        } else {
+            u8g2->print(" ");
+        }
         u8g2->print(days[i]);
-        if (daysArray[i]) {
-            u8g2->setCursor(10 + i * 16, 50);
+        
+        if (_lampEditor->getScheduleDay(i)) {
+            u8g2->setCursor(10 + i * 17, 50);
             u8g2->print("[X]");
         }
     }
-    
-    u8g2->setFont(u8g2_font_5x8_t_cyrillic);
-    u8g2->setCursor(0, 62);
-    u8g2->print("Кнопка: назад");
     
     display.update();
 }

@@ -77,12 +77,12 @@ private:
     int _scheduleEndHour;               // время конца
     int _scheduleEndMin;
     
-    // Состояние редактора
-    int _editMode;                      // 0=дни, 1=время начала, 2=время конца
-    bool _editTimeMode;                 // false=часы, true=минуты
+    // Режим редактора: 0=дни, 1=время начала, 2=время конца
+    int _editMode;
+    // Активное редактируемое поле: -1 = нет, 0 = часы, 1 = минуты
+    int _activeField;                   // активно ли редактирование времени
     int _editHour;                      // редактируемый час
     int _editMinute;                    // редактируемая минута
-    bool _editing;                      // флаг: находимся в режиме редактирования значения
     
     ScheduleManager* _schedManager;     // указатель на планировщик
     
@@ -130,10 +130,10 @@ public:
     int getScheduleEndHour() const { return _scheduleEndHour; }
     int getScheduleEndMin() const { return _scheduleEndMin; }
     int getEditMode() const { return _editMode; }
-    bool getEditTimeMode() const { return _editTimeMode; }
+    int getActiveField() const { return _activeField; }
     int getEditHour() const { return _editHour; }
     int getEditMinute() const { return _editMinute; }
-    bool isEditing() const { return _editing; }
+    bool isEditing() const { return _activeField >= 0; }
 };
 
 #endif
