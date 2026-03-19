@@ -52,8 +52,15 @@ SensorData Sensors::read() {
     // BH1750
     if (_lightOK) {
         // В библиотеке Rob Tillaart чтение делается через readLightLevel()
-        data.lightLevel = _lightMeter.readLightLevel();
-        data.lightValid = true;
+        float light = _lightMeter.readLightLevel();
+        // Валидация: BH1750 возвращает 0 при ошибке или 65535 (0xFFFF) в некоторых случаях
+        // Ожидаемый диапазон для цеха/помещения: 0-10000+ лк
+        if (light > 0 && light < 65535) {
+            data.lightLevel = light;
+            data.lightValid = true;
+        } else {
+            data.lightValid = false;
+        }
     }
     
     return data;

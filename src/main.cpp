@@ -30,21 +30,36 @@ void initStats() {
     stats.maxTemp = -100.0;
     stats.minHum = 100.0;
     stats.maxHum = 0.0;
-    stats.minLight = 10000.0;
+    stats.minLight = 100000.0;
     stats.maxLight = 0.0;
     stats.uptime = 0;
+    stats.tempValid = false;
+    stats.humValid = false;
+    stats.lightValid = false;
 }
 
 void updateStats(float temp, float hum, float light) {
-    if (sensorData.ahtValid) {
+    // Проверка на валидность чисел (не NaN, не Inf, не отрицательные для реальных физических величин)
+    auto isValidNumber = [](float val) -> bool {
+        return !isnan(val) && !isinf(val) && val >= -50 && val <= 150; // широкий диапазон
+    };
+    
+    bool tempValid = isValidNumber(temp);
+    bool humValid = isValidNumber(hum);
+    bool lightValid = isValidNumber(light) && light > 0 && light < 100000; // свет > 0
+    
+    if (tempValid && humValid && sensorData.ahtValid) {
         if (temp < stats.minTemp) stats.minTemp = temp;
         if (temp > stats.maxTemp) stats.maxTemp = temp;
         if (hum < stats.minHum) stats.minHum = hum;
         if (hum > stats.maxHum) stats.maxHum = hum;
+        stats.tempValid = true;
+        stats.humValid = true;
     }
-    if (sensorData.lightValid) {
+    if (lightValid && sensorData.lightValid) {
         if (light < stats.minLight) stats.minLight = light;
         if (light > stats.maxLight) stats.maxLight = light;
+        stats.lightValid = true;
     }
 }
 

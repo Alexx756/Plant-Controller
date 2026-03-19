@@ -49,6 +49,9 @@ struct Statistics {
     float minLight;
     float maxLight;
     unsigned long uptime;
+    bool tempValid;    // флаги валидности данных (были ли обновления)
+    bool humValid;
+    bool lightValid;
 };
 
 class Menu {
@@ -85,6 +88,7 @@ private:
     bool _editHumidifierCyclicEnabled;   // для экрана цикла (useCyclic)
     
     // ===== НАСТРОЙКИ ЛАМП =====
+    int _currentLampNumber;              // текущий номер лампы (1-3) для редактирования
     int _editLampNumber;                 // номер редактируемой лампы (1-3)
     bool _editLampUseSensor;             // использовать датчик света
     bool _editLampUseSchedule;           // использовать расписание
@@ -94,7 +98,7 @@ private:
     bool _editLampScheduleDays[7];       // дни недели
     int _editLampScheduleStartHour;      // время начала
     int _editLampScheduleStartMin;
-    int _editLampScheduleEndHour;        // время конца
+    int _editLampScheduleEndHour;        // времени конца
     int _editLampScheduleEndMin;
     
     // ===== РЕДАКТИРОВАНИЕ РАСПИСАНИЯ ЛАМП =====

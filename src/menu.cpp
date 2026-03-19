@@ -48,6 +48,9 @@ Menu::Menu() {
     _editingActive = false;
     _editingIndex = 0;
     
+    // Номер текущей лампы
+    _currentLampNumber = 0;
+    
     menuInstance = this;
 }
 
@@ -159,10 +162,10 @@ void Menu::update(float temp, float hum, float dsTemp, float light, RelayState r
         case SCREEN_LAMP1_SETTINGS:
         case SCREEN_LAMP2_SETTINGS:
         case SCREEN_LAMP3_SETTINGS:
-            drawLampDetailScreen(_currentScreen - SCREEN_LAMP1_SETTINGS + 1);
+            drawLampDetailScreen(_currentLampNumber);
             break;
         case SCREEN_LAMP_SCHEDULE:
-            drawLampScheduleScreen(_currentScreen - SCREEN_LAMP1_SETTINGS + 1);
+            drawLampScheduleScreen(_currentLampNumber);
             break;
         case SCREEN_LAMP_DAYS:
             drawLampDaysScreen();
@@ -436,14 +439,17 @@ void Menu::handleShortPress() {
         case SCREEN_LAMP_SETTINGS:
             switch (_menuPosition) {
                 case 0:
+                    _currentLampNumber = 1;
                     _currentScreen = SCREEN_LAMP1_SETTINGS;
                     _menuPosition = 0;
                     break;
                 case 1:
+                    _currentLampNumber = 2;
                     _currentScreen = SCREEN_LAMP2_SETTINGS;
                     _menuPosition = 0;
                     break;
                 case 2:
+                    _currentLampNumber = 3;
                     _currentScreen = SCREEN_LAMP3_SETTINGS;
                     _menuPosition = 0;
                     break;
@@ -456,11 +462,11 @@ void Menu::handleShortPress() {
             // Если в режиме редактирования порога/гистерезиса - сохраняем и выходим из режима
             if (_editingActive && (_menuPosition == 1 || _menuPosition == 2)) {
                 if (_relay) {
-                    int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS + 1;
+                    int lampIndex = _currentLampNumber - 1;
                     if (_editingIndex == 1) { // Порог
-                        _relay->setLampThreshold(lampIndex, _editHumidifierValue, _editHumidifierValue2);
+                        _relay->setLampThreshold(_currentLampNumber, _editHumidifierValue, _editHumidifierValue2);
                     } else if (_editingIndex == 2) { // Гистерезис
-                        _relay->setLampHysteresis(lampIndex, _editHumidifierValue2);
+                        _relay->setLampHysteresis(_currentLampNumber, _editHumidifierValue2);
                     }
                 }
                 _editingActive = false;
@@ -474,15 +480,14 @@ void Menu::handleShortPress() {
                 
                 // Используем LampScheduleEditor
                 if (_lampEditor && _relay) {
-                    int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS;
                     ChannelSettings* s = nullptr;
-                    if (lampIndex == 0) s = _relay->getLamp1Settings();
-                    else if (lampIndex == 1) s = _relay->getLamp2Settings();
-                    else if (lampIndex == 2) s = _relay->getLamp3Settings();
+                    if (_currentLampNumber == 1) s = _relay->getLamp1Settings();
+                    else if (_currentLampNumber == 2) s = _relay->getLamp2Settings();
+                    else if (_currentLampNumber == 3) s = _relay->getLamp3Settings();
                     
                     if (s) {
                         _lampEditor->startEditing(
-                            lampIndex + 1,
+                            _currentLampNumber,
                             s->useSensor, s->useSchedule,
                             s->thresholdLow, s->sensorHysteresis,
                             s->scheduleDays,
@@ -494,17 +499,15 @@ void Menu::handleShortPress() {
             } else {
                 // Обработка нажатий в детальном экране лампы
                 if (_relay) {
-                    int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS;
                     ChannelSettings* s = nullptr;
-                    if (lampIndex == 0) s = _relay->getLamp1Settings();
-                    else if (lampIndex == 1) s = _relay->getLamp2Settings();
-                    else if (lampIndex == 2) s = _relay->getLamp3Settings();
+                    if (_currentLampNumber == 1) s = _relay->getLamp1Settings();
+                    else if (_currentLampNumber == 2) s = _relay->getLamp2Settings();
+                    else if (_currentLampNumber == 3) s = _relay->getLamp3Settings();
                     
                     if (s) {
                         if (_menuPosition == 0) { // Включить/выключить датчик
                             bool currentState = s->useSensor;
-                            int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS;
-                            _relay->setLampUseSensor(lampIndex + 1, !currentState);
+                            _relay->setLampUseSensor(_currentLampNumber, !currentState);
                         } else if (_menuPosition == 1) { // Порог
                             // Загружаем текущие значения
                             _editHumidifierValue = s->thresholdLow;
@@ -613,11 +616,10 @@ void Menu::handleLongPress() {
                 }
             } else if (_currentScreen == SCREEN_LAMP1_SETTINGS || _currentScreen == SCREEN_LAMP2_SETTINGS || _currentScreen == SCREEN_LAMP3_SETTINGS) {
                 // Сохраняем настройки ламп через сеттеры
-                int lampIndex = _currentScreen - SCREEN_LAMP1_SETTINGS + 1;
                 if (_editingIndex == 1) { // Порог
-                    _relay->setLampThreshold(lampIndex, _editHumidifierValue, _editHumidifierValue2);
+                    _relay->setLampThreshold(_currentLampNumber, _editHumidifierValue, _editHumidifierValue2);
                 } else if (_editingIndex == 2) { // Гистерезис
-                    _relay->setLampHysteresis(lampIndex, _editHumidifierValue2);
+                    _relay->setLampHysteresis(_currentLampNumber, _editHumidifierValue2);
                 }
             }
         }
@@ -751,23 +753,40 @@ void Menu::drawSettingsScreen() {
 void Menu::drawStatsScreen(Statistics stats) {
     display.clear();
     U8G2_FOR_ADAFRUIT_GFX* u8g2 = display.getU8g2();
-    u8g2->setFont(u8g2_font_5x8_t_cyrillic);
+    u8g2->setFont(u8g2_font_6x13_t_cyrillic);
     u8g2->setCursor(0, 12);
     u8g2->print("СТАТИСТИКА");
     
     char buffer[32];
-    snprintf(buffer, sizeof(buffer), "T:%.1f-%.1fC", stats.minTemp, stats.maxTemp);
+    
+    // Температура
     u8g2->setCursor(0, 24);
-    u8g2->print(buffer);
+    if (stats.tempValid) {
+        snprintf(buffer, sizeof(buffer), "T:%.1f-%.1fC", stats.minTemp, stats.maxTemp);
+        u8g2->print(buffer);
+    } else {
+        u8g2->print("T: -- (нет данных)");
+    }
     
-    snprintf(buffer, sizeof(buffer), "H:%.0f-%.0f%%", stats.minHum, stats.maxHum);
+    // Влажность
     u8g2->setCursor(0, 36);
-    u8g2->print(buffer);
+    if (stats.humValid) {
+        snprintf(buffer, sizeof(buffer), "H:%.0f-%.0f%%", stats.minHum, stats.maxHum);
+        u8g2->print(buffer);
+    } else {
+        u8g2->print("H: -- (нет данных)");
+    }
     
-    snprintf(buffer, sizeof(buffer), "L:%.0f-%.0flx", stats.minLight, stats.maxLight);
+    // Свет
     u8g2->setCursor(0, 48);
-    u8g2->print(buffer);
+    if (stats.lightValid) {
+        snprintf(buffer, sizeof(buffer), "L:%.0f-%.0flx", stats.minLight, stats.maxLight);
+        u8g2->print(buffer);
+    } else {
+        u8g2->print("L: -- (нет данных)");
+    }
     
+    // Время работы
     unsigned long days = stats.uptime / 86400;
     unsigned long hours = (stats.uptime % 86400) / 3600;
     snprintf(buffer, sizeof(buffer), "Up:%dд %dч", days, hours);
