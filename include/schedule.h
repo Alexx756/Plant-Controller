@@ -3,6 +3,9 @@
 
 #include <Arduino.h>
 
+// Forward declaration для ChannelSettings из relay.h
+struct ChannelSettings;
+
 // Структура для хранения расписания одного устройства
 struct ScheduleItem {
     bool enabled;
@@ -51,7 +54,7 @@ public:
     bool isLampScheduled(int lamp, int hour, int min, int day);
     
     // Настройка увлажнителя
-    bool isHumidifierScheduled(int hour, int min, int day);  // <-- добавить
+    bool isHumidifierScheduled(int hour, int min, int day);
     void setHumidifierThreshold(int threshold);
     void setHumidifierCyclic(int workSec, int idleSec);
     void setHumidifierSchedule(int startH, int startM, int endH, int endM, int* days, int daysCount);
@@ -59,6 +62,10 @@ public:
     
     // Получение настроек
     HumidifierSettings getHumidifierSettings() { return _humidifier; }
+    
+    // Синхронизация с ChannelSettings из RelayController
+    void syncLampFromSettings(int lampNumber, const ChannelSettings& settings);
+    void syncHumidifierFromSettings(const ChannelSettings& settings);
 };
 
 // ============ РЕДАКТОР РАСПИСАНИЯ ЛАМП ============

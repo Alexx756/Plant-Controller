@@ -153,6 +153,58 @@ bool ScheduleManager::isHumidifierScheduled(int hour, int min, int day) {
     return checkSchedule(_humidifier.schedule, hour, min, day);
 }
 
+// Синхронизация расписания ламп из ChannelSettings
+void ScheduleManager::syncLampFromSettings(int lampNumber, const ChannelSettings& settings) {
+    ScheduleItem* sched = nullptr;
+    switch(lampNumber) {
+        case 1: sched = &_lamp1Schedule; break;
+        case 2: sched = &_lamp2Schedule; break;
+        case 3: sched = &_lamp3Schedule; break;
+        default: return;
+    }
+    
+    // Синхронизируем расписание из ChannelSettings
+    sched->enabled = settings.useSchedule;
+    sched->startHour = settings.scheduleStartHour;
+    sched->startMinute = settings.scheduleStartMin;
+    sched->endHour = settings.scheduleEndHour;
+    sched->endMinute = settings.scheduleEndMin;
+    sched->daysCount = 0;
+    for (int i = 0; i < 7; i++) {
+        if (settings.scheduleDays[i]) {
+            sched->days[sched->daysCount++] = i;
+        }
+    }
+    
+    logger.logf("РАСПИСАНИЕ", "Лампа %d sync: enable=%d, %02d:%02d-%02d:%02d, days=%d",
+                lampNumber, settings.useSchedule,
+                settings.scheduleStartHour, settings.scheduleStartMin,
+                settings.scheduleEndHour, settings.scheduleEndMin,
+                sched->daysCount);
+}
+
+// Синхронизация расписания увлажнителя из ChannelSettings
+void ScheduleManager::syncHumidifierFromSettings(const ChannelSettings& settings) {
+    // Синхронизируем увлажнитель
+    _humidifier.schedule.enabled = settings.useSchedule;
+    _humidifier.schedule.startHour = settings.scheduleStartHour;
+    _humidifier.schedule.startMinute = settings.scheduleStartMin;
+    _humidifier.schedule.endHour = settings.scheduleEndHour;
+    _humidifier.schedule.endMinute = settings.scheduleEndMin;
+    _humidifier.schedule.daysCount = 0;
+    for (int i = 0; i < 7; i++) {
+        if (settings.scheduleDays[i]) {
+            _humidifier.schedule.days[_humidifier.schedule.daysCount++] = i;
+        }
+    }
+    
+    logger.logf("РАСПИСАНИЕ", "Увлажнитель sync: enable=%d, %02d:%02d-%02d:%02d, days=%d",
+                settings.useSchedule,
+                settings.scheduleStartHour, settings.scheduleStartMin,
+                settings.scheduleEndHour, settings.scheduleEndMin,
+                _humidifier.schedule.daysCount);
+}
+
 // ============ РЕАЛИЗАЦИЯ LampScheduleEditor ============
 
 LampScheduleEditor::LampScheduleEditor() {

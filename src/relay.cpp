@@ -472,6 +472,14 @@ void RelayController::loadSettingsFromNVS() {
         loadDefaults();
         saveSettingsToNVS();
     }
+    
+    // Синхронизируем ScheduleManager с загруженными настройками
+    if (_schedManager != nullptr) {
+        _schedManager->syncLampFromSettings(1, _lamp1Settings);
+        _schedManager->syncLampFromSettings(2, _lamp2Settings);
+        _schedManager->syncLampFromSettings(3, _lamp3Settings);
+        _schedManager->syncHumidifierFromSettings(_humidifierSettings);
+    }
 }
 
 void RelayController::saveSettingsToNVS() {

@@ -580,6 +580,23 @@ void Menu::handleLongPress() {
     // Длительное нажатие в SCREEN_LAMP_DAYS: сохраняем дни и возвращаемся в SCREEN_LAMP_SCHEDULE
     if (_currentScreen == SCREEN_LAMP_DAYS && _lampEditor) {
         _lampEditor->saveToSchedule();
+        // Синхронизируем с ChannelSettings через RelayController
+        if (_relay && _lampEditor) {
+            int lampNumber = _lampEditor->getLampNumber();
+            int days[7];
+            int daysCount = 0;
+            for (int i = 0; i < 7; i++) {
+                if (_lampEditor->getScheduleDay(i)) {
+                    days[daysCount++] = i;
+                }
+            }
+            _relay->setLampSchedule(
+                lampNumber,
+                _lampEditor->getScheduleStartHour(), _lampEditor->getScheduleStartMin(),
+                _lampEditor->getScheduleEndHour(), _lampEditor->getScheduleEndMin(),
+                days, daysCount
+            );
+        }
         _currentScreen = SCREEN_LAMP_SCHEDULE;
         _menuPosition = 0;
         return;
@@ -590,6 +607,19 @@ void Menu::handleLongPress() {
         _lampEditor->saveToSchedule();
         if (_relay) {
             int lampNumber = _lampEditor->getLampNumber();
+            int days[7];
+            int daysCount = 0;
+            for (int i = 0; i < 7; i++) {
+                if (_lampEditor->getScheduleDay(i)) {
+                    days[daysCount++] = i;
+                }
+            }
+            _relay->setLampSchedule(
+                lampNumber,
+                _lampEditor->getScheduleStartHour(), _lampEditor->getScheduleStartMin(),
+                _lampEditor->getScheduleEndHour(), _lampEditor->getScheduleEndMin(),
+                days, daysCount
+            );
             _relay->setLampUseSchedule(lampNumber, true);
         }
         // Возвращаемся в экран настроек соответствующей лампы (пункт "Расписание")
