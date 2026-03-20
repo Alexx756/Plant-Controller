@@ -5,15 +5,15 @@
 #include <WiFi.h>
 #include <time.h>
 
-// Дни недели
+// Дни недели (0-6, где 0=пн, 6=вс) - соответствует getDayOfWeek()
 enum WeekDay {
-    MONDAY = 1,
-    TUESDAY = 2,
-    WEDNESDAY = 3,
-    THURSDAY = 4,
-    FRIDAY = 5,
-    SATURDAY = 6,
-    SUNDAY = 7
+    MONDAY = 0,
+    TUESDAY = 1,
+    WEDNESDAY = 2,
+    THURSDAY = 3,
+    FRIDAY = 4,
+    SATURDAY = 5,
+    SUNDAY = 6
 };
 
 class TimeManager {
@@ -35,7 +35,7 @@ public:
     int getDay();        // число месяца (1-31)
     int getMonth();      // месяц (1-12)
     int getYear();       // год (4 цифры)
-    int getDayOfWeek();  // день недели (1-7, где 1 = понедельник)
+    int getDayOfWeek();  // день недели (0-6, где 0 = понедельник, 6 = воскресенье)
     String getDayOfWeekStr(); // "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"
     String getFormattedTime(); // "14:25:36"
     String getFormattedDate(); // "23.03.2026"

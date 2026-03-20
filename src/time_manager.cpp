@@ -48,23 +48,27 @@ int TimeManager::getYear() {
 }
 
 int TimeManager::getDayOfWeek() {
-    if (!_timeSynced) return 1;
-    // tm_wday: 0 = воскресенье, преобразуем в 1 = понедельник
+    if (!_timeSynced) return 0;
+    // tm_wday: 0 = воскресенье, 1 = понедельник, ..., 6 = суббота
+    // Преобразуем в: 0 = понедельник, ..., 5 = суббота, 6 = воскресенье
     int wday = _timeinfo.tm_wday;
-    if (wday == 0) return 7;  // воскресенье
-    return wday;  // пн=1, вт=2, ср=3, чт=4, пт=5, сб=6
+    if (wday == 0) {
+        return 6;  // воскресенье -> 6
+    } else {
+        return wday - 1;  // пн=1->0, вт=2->1, ..., сб=6->5
+    }
 }
 
 String TimeManager::getDayOfWeekStr() {
     int wday = getDayOfWeek();
     switch(wday) {
-        case 1: return "ПН";
-        case 2: return "ВТ";
-        case 3: return "СР";
-        case 4: return "ЧТ";
-        case 5: return "ПТ";
-        case 6: return "СБ";
-        case 7: return "ВС";
+        case 0: return "ПН";
+        case 1: return "ВТ";
+        case 2: return "СР";
+        case 3: return "ЧТ";
+        case 4: return "ПТ";
+        case 5: return "СБ";
+        case 6: return "ВС";
         default: return "--";
     }
 }

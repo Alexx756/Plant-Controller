@@ -13,7 +13,7 @@ struct ScheduleItem {
     int startMinute;
     int endHour;
     int endMinute;
-    int days[7];  // массив дней (1-7), 0 означает "не выбран"
+    int days[7];  // массив дней недели (0-6, где 0=пн, 6=вс), хранит индексы выбранных дней
     int daysCount;
 };
 

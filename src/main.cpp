@@ -189,7 +189,7 @@ void loop() {
         
         // ===== АВТОМАТИЧЕСКОЕ УПРАВЛЕНИЕ (AUTO режим) =====
         if (menu.getControlMode() == MODE_AUTO) {
-            // Обновляем состояние всех каналов через новый RelayController
+            // getDayOfWeek() возвращает 0-6 (пн=0, вс=6) - соответствует индексам массивов
             relays.update(
                 sensorData.lightLevel,
                 sensorData.ahtHum,

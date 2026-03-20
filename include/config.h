@@ -83,7 +83,7 @@ struct ChannelSettings {
     int sensorHysteresis;   // гистерезис (разница между вкл/выкл)
     
     // Настройки расписания
-    bool scheduleDays[7];   // дни недели [пн, вт, ср, чт, пт, сб, вс]
+    bool scheduleDays[7];   // дни недели [0=пн, 1=вт, 2=ср, 3=чт, 4=пт, 5=сб, 6=вс]
     int scheduleStartHour;
     int scheduleStartMin;
     int scheduleEndHour;
